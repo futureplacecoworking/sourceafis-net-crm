@@ -1,0 +1,176 @@
+name: Agente FS80H — Windows
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'AgenteFS80H/**'
+      - 'AgenteFS80H.Core/**'
+      - 'AgenteFS80H.Tests/**'
+      - 'SourceAFIS/**'
+      - 'SourceAFIS.Tests/**'
+      - 'installer/**'
+      - 'docs/AGENTE-FS80H.md'
+      - '.github/workflows/fs80h-windows.yml'
+  pull_request:
+    paths:
+      - 'AgenteFS80H/**'
+      - 'AgenteFS80H.Core/**'
+      - 'AgenteFS80H.Tests/**'
+      - 'SourceAFIS/**'
+      - 'SourceAFIS.Tests/**'
+      - 'installer/**'
+      - 'docs/AGENTE-FS80H.md'
+      - '.github/workflows/fs80h-windows.yml'
+  workflow_dispatch:
+    inputs:
+      create_draft_release:
+        description: Criar rascunho de release depois dos testes e empacotamento
+        required: true
+        default: false
+        type: boolean
+      release_tag:
+        description: Tag exclusiva para o rascunho (exemplo agente-fs80h-v1.0.0)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fs80h-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Testar e gerar instalador por usuário
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Verificar sintaxe dos scripts de instalação
+        shell: pwsh
+        run: |
+          foreach ($script in @('installer/Install.ps1', 'installer/Uninstall.ps1')) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $script), [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -ne 0) { throw ($parseErrors | Out-String) }
+          }
+      - name: Testar biblioteca SourceAFIS
+        run: dotnet test SourceAFIS.Tests/SourceAFIS.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/sourceafis
+      - name: Testar protocolo, proteção e fluxo do agente
+        run: dotnet test AgenteFS80H.Tests/AgenteFS80H.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/agente
+      - name: Publicar Windows x64 autocontido
+        run: dotnet publish AgenteFS80H/AgenteFS80H.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/bundle/app /p:PublishSingleFile=false /p:PublishTrimmed=false /p:PublishReadyToRun=false
+      - name: Preparar pacote instalável
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $PWD 'artifacts/bundle'
+          foreach ($required in @('AgenteFS80H.exe', 'AgenteFS80H.Core.dll', 'SourceAFIS.dll', 'coreclr.dll')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $bundle "app/$required"))) {
+              throw "Arquivo de publicação ausente: $required"
+            }
+          }
+          if (Get-ChildItem -LiteralPath $bundle -Recurse -Filter 'ftrScanAPI.dll') {
+            throw 'O pacote não pode redistribuir a DLL proprietária Futronic.'
+          }
+          Copy-Item installer/Install.ps1, installer/Uninstall.ps1 -Destination $bundle
+          Copy-Item docs/AGENTE-FS80H.md -Destination (Join-Path $bundle 'LEIA-ME.md')
+          Copy-Item LICENSE -Destination $bundle
+          @{
+            commit = '${{ github.sha }}'
+            platform = 'win-x64'
+            framework = 'net10.0-windows'
+            contains_futronic_binaries = $false
+          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $bundle 'build-info.json') -Encoding utf8
+          $zip = Join-Path $PWD 'artifacts/AgenteFS80H-win-x64.zip'
+          Compress-Archive -Path (Join-Path $bundle '*') -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  AgenteFS80H-win-x64.zip" | Set-Content -LiteralPath "$zip.sha256" -Encoding ascii
+      - name: Verificar instalação, inicialização e remoção por usuário
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $PWD 'artifacts/bundle'
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs\Futureplace\AgenteFS80H'
+          $data = Join-Path $env:LOCALAPPDATA 'Futureplace\AgenteFS80H\data'
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          $runName = 'FutureplaceAgenteFS80H'
+          $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\FutureplaceAgenteFS80H'
+          & (Join-Path $bundle 'Install.ps1') -NoStart
+          if (-not (Test-Path -LiteralPath (Join-Path $installed 'AgenteFS80H.exe'))) { throw 'Instalação não copiou o aplicativo.' }
+          if (-not (Test-Path -LiteralPath $uninstallKey)) { throw 'Instalação não registrou o desinstalador.' }
+          $startup = (Get-ItemProperty -LiteralPath $runKey -Name $runName).$runName
+          $expected = '"' + (Join-Path $installed 'AgenteFS80H.exe') + '" --background'
+          if ($startup -ne $expected) { throw 'Inicialização automática incorreta.' }
+          New-Item -ItemType Directory -Path $data -Force | Out-Null
+          $marker = Join-Path $data 'ci-preservation.marker'
+          'synthetic installer check' | Set-Content -LiteralPath $marker
+          & (Join-Path $installed 'Uninstall.ps1') -KeepData
+          if (-not (Test-Path -LiteralPath $marker)) { throw 'Desinstalação não preservou os dados solicitados.' }
+          if (Test-Path -LiteralPath $installed) { throw 'Desinstalação não removeu o aplicativo.' }
+          if (Get-ItemProperty -LiteralPath $runKey -Name $runName -ErrorAction SilentlyContinue) { throw 'Desinstalação manteve a inicialização automática.' }
+          & (Join-Path $bundle 'Install.ps1') -NoStart -NoStartup
+          if (Get-ItemProperty -LiteralPath $runKey -Name $runName -ErrorAction SilentlyContinue) { throw 'NoStartup foi ignorado.' }
+          & (Join-Path $installed 'Uninstall.ps1') -RemoveData
+          if (Test-Path -LiteralPath $data) { throw 'Remoção explícita dos dados foi ignorada.' }
+          if (Test-Path -LiteralPath $uninstallKey) { throw 'Desinstalação manteve o registro de aplicativo.' }
+      - name: Disponibilizar ZIP e checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgenteFS80H-win-x64
+          path: |
+            artifacts/AgenteFS80H-win-x64.zip
+            artifacts/AgenteFS80H-win-x64.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+      - name: Disponibilizar resultados de testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgenteFS80H-test-results
+          path: artifacts/test-results/**/*.trx
+          if-no-files-found: warn
+          retention-days: 14
+
+  draft-release:
+    name: Criar rascunho solicitado manualmente
+    needs: build-and-test
+    if: github.event_name == 'workflow_dispatch' && inputs.create_draft_release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: AgenteFS80H-win-x64
+          path: package
+      - name: Criar release em rascunho
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RELEASE_TAG -notmatch '^agente-fs80h-v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$') {
+            throw 'Informe uma tag no formato agente-fs80h-v1.0.0.'
+          }
+          @'
+          Agente Windows x64 autocontido para captura Futronic FS80H e comparação SourceAFIS local.
+
+          Extraia o ZIP completo e siga LEIA-ME.md. Instalação por usuário, sem precisar instalar o .NET.
+          Driver e DLL oficiais Futronic são obtidos separadamente do fabricante.
+          A autorização depende da Central conectada. Esta versão não aciona fechadura.
+          O teste físico no computador do leitor continua necessário.
+          '@ | Set-Content -LiteralPath release-notes.md -Encoding utf8
+          gh release create $env:RELEASE_TAG package/AgenteFS80H-win-x64.zip package/AgenteFS80H-win-x64.zip.sha256 --draft --target $env:RELEASE_COMMIT --title "Agente FS80H $env:RELEASE_TAG" --notes-file release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw 'Não foi possível criar o rascunho de release.' }

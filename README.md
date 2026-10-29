@@ -1,3 +1,11 @@
+## Agente Windows FS80H da Central
+
+Este fork inclui um aplicativo de bandeja para Windows 10/11 x64, com captura Futronic FS80H,
+comparação SourceAFIS local e autorização pela Central de Operações.
+O pacote autocontido e o instalador por usuário são gerados pelo workflow **Agente FS80H — Windows**.
+[Instalação, pareamento e operação em português](docs/AGENTE-FS80H.md).
+Nenhuma fechadura é acionada nesta etapa. Driver e DLL oficiais são obtidos separadamente do fabricante.
+
 [![SWUbanner](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-direct.svg)](https://github.com/vshymanskyy/StandWithUkraine/blob/main/docs/README.md)
 
 # SourceAFIS for .NET

@@ -31,3 +31,8 @@ Thumbs.db
 *.nupkg
 *.snupkg
 **/[Pp]ackages/
+
+# Artefatos locais do agente; nunca versionar biometria ou binário Futronic
+artifacts/
+*.dpapi
+ftrScanAPI.dll
