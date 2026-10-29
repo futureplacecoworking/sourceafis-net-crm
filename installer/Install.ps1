@@ -86,14 +86,15 @@ try {
     $shortcut.Description = 'Leitor de digitais Futureplace — autorização pela Central'
     $shortcut.Save()
 
-    if (-not (Test-Path -LiteralPath $startupKey)) { New-Item -Path $startupKey | Out-Null }
+    # Perfis novos podem não ter as chaves intermediárias; -Force também cria os pais.
+    if (-not (Test-Path -LiteralPath $startupKey)) { New-Item -Path $startupKey -Force | Out-Null }
     if ($NoStartup) {
         Remove-ItemProperty -Path $startupKey -Name $startupName -ErrorAction SilentlyContinue
     } else {
         New-ItemProperty -Path $startupKey -Name $startupName -PropertyType String -Value ('"' + $executable + '" --background') -Force | Out-Null
     }
 
-    if (-not (Test-Path -LiteralPath $uninstallKey)) { New-Item -Path $uninstallKey | Out-Null }
+    if (-not (Test-Path -LiteralPath $uninstallKey)) { New-Item -Path $uninstallKey -Force | Out-Null }
     $uninstallCommand = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $installDirectory 'Uninstall.ps1') + '"'
     $version = (Get-Item -LiteralPath $executable).VersionInfo.ProductVersion
     if ([string]::IsNullOrWhiteSpace($version)) { $version = '1.0.0' }
