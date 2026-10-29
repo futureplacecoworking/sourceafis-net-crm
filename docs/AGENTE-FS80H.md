@@ -39,9 +39,9 @@ O [fabricante especifica](https://www.futronic-tech.com/pro-detail.php?pro_id=15
 
 ## Parear e cadastrar
 
-1. Na Central, um administrador humano abre **Digitais**, cria o leitor e gera um código de pareamento temporário.
+1. Na Central, um administrador humano abre **Automação e sensores › Leitor da recepção**, cria o leitor e gera um código de pareamento temporário.
 2. No aplicativo Windows, informe a **URL HTTPS da Central**, como `https://central.futureplacecoworking.com.br`, e o **código de pareamento**. O aplicativo obtém a configuração pública da Central automaticamente; não é necessário procurar ou digitar chaves técnicas. Confirme o pareamento. Use apenas a Central da sua organização; o código é temporário e de uso único.
-3. Na Central, solicite o cadastro no leitor para o cartão da pessoa já existente em Digitais.
+3. Em **Automação e sensores**, solicite o cadastro no leitor para a pessoa escolhida. O cartão existente em Digitais é apenas consultado como vínculo; a tela, os controles e os registros manuais das fechaduras permanecem intactos.
 4. Siga o estado exibido pelo aplicativo: apresente o dedo, retire-o completamente e apresente o mesmo dedo novamente. São necessárias duas leituras consistentes. O cadastro também recusa digital já associada a outro cadastro local.
 5. Na Central, configure as permissões e horários do cadastro. Cadastrar uma digital, sozinho, não autoriza acesso.
 
