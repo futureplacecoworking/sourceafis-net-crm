@@ -61,6 +61,43 @@ function Find-Wizard([Diagnostics.Process]$Loader, [string]$ButtonName = '') {
     return $null
 }
 
+function Get-ApplicationWindows([Diagnostics.Process]$Application) {
+    $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ProcessIdProperty, $Application.Id)
+    $windows = [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, $condition)
+    foreach ($candidate in $windows) { $candidate }
+}
+
+function Find-ApplicationWindow([Diagnostics.Process]$Application) {
+    foreach ($candidate in @(Get-ApplicationWindows $Application)) {
+        # A generic Program/ThreadException MessageBox has the same product title.
+        # Require the real, enabled WinForms operator page instead of accepting any HWND.
+        if ($candidate.Current.ClassName.StartsWith('WindowsForms10.Window', [StringComparison]::Ordinal) -and
+            -not $candidate.Current.IsOffscreen -and $candidate.Current.IsEnabled -and
+            (Find-Button $candidate 'Leitura') -and (Find-Button $candidate 'Configurações')) { return $candidate }
+    }
+    return $null
+}
+
+function Save-ApplicationEvidence([Diagnostics.Process]$Application, [string]$Label) {
+    $Application.Refresh()
+    $fresh = Get-Process -Id $Application.Id -ErrorAction SilentlyContinue
+    Write-Host "Application evidence ${Label}: PID=$($Application.Id) exited=$($Application.HasExited) cachedMain=$($Application.MainWindowHandle) freshMain=$(if($fresh){$fresh.MainWindowHandle}else{'exited'})"
+    $records = @()
+    $index = 0
+    foreach ($candidate in @(Get-ApplicationWindows $Application)) {
+        $index++
+        $texts = $candidate.FindAll([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text)))
+        $visibleText = @($texts | ForEach-Object { $_.Current.Name })
+        $record = @{ title=$candidate.Current.Name; class=$candidate.Current.ClassName; enabled=$candidate.Current.IsEnabled; offscreen=$candidate.Current.IsOffscreen; processId=$candidate.Current.ProcessId; handle=$candidate.Current.NativeWindowHandle; text=$visibleText }
+        $records += $record
+        Write-Host ($record | ConvertTo-Json -Depth 4 -Compress)
+        if (-not $candidate.Current.IsOffscreen -and $candidate.Current.BoundingRectangle.Width -gt 0 -and $candidate.Current.BoundingRectangle.Height -gt 0) {
+            Save-Wizard $candidate ("application-$Label-$index.png")
+        }
+    }
+    $records | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutputDirectory ("application-$Label.json"))
+}
+
 function Save-Wizard($Window, [string]$Name) {
     $rect = $Window.Current.BoundingRectangle
     $bitmap = New-Object Drawing.Bitmap([int]$rect.Width, [int]$rect.Height)
@@ -108,12 +145,14 @@ function Invoke-GraphicalInstall {
     Assert-True ($wizard.ExitCode -eq 0) 'Graphical installation failed.'
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
     $application = $null
+    $operatorWindow = $null
     do {
         Start-Sleep -Milliseconds 100
         $application = Get-Process -Name 'AgenteFS80H' -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path -eq $executable } | Select-Object -First 1
-        if ($application) { $application.Refresh() }
-    } while ((-not $application -or $application.MainWindowHandle -eq [IntPtr]::Zero) -and [DateTime]::UtcNow -lt $deadline)
-    Assert-True ($null -ne $application -and $application.MainWindowHandle -ne [IntPtr]::Zero) 'Concluir did not open Central Biométrica automatically.'
+        if ($application) { $application.Refresh(); $operatorWindow = Find-ApplicationWindow $application }
+    } while (-not $operatorWindow -and [DateTime]::UtcNow -lt $deadline)
+    if ($application) { Save-ApplicationEvidence $application 'after-concluir' }
+    Assert-True ($null -ne $operatorWindow) 'Concluir did not open the enabled WinForms Leitura/Configurações page; inspect application-after-concluir evidence.'
     Assert-True ($application.CloseMainWindow()) 'The installed main window could not be closed to the tray.'
     Start-Sleep -Milliseconds 350
     $application.Refresh()
@@ -243,7 +282,14 @@ Assert-True ($second.WaitForExit(15000)) 'A second launch did not forward to the
 $agent.Refresh()
 Assert-True (-not $agent.HasExited) 'A second launch stopped the original background application.'
 $deadline = [DateTime]::UtcNow.AddSeconds(10)
-while ($agent.MainWindowHandle -eq [IntPtr]::Zero -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100; $agent.Refresh() }
+$reopenedWindow = $null
+do {
+    Start-Sleep -Milliseconds 100
+    $agent.Refresh()
+    $reopenedWindow = Find-ApplicationWindow $agent
+} while (-not $reopenedWindow -and [DateTime]::UtcNow -lt $deadline)
+Save-ApplicationEvidence $agent 'after-reopen'
+Assert-True ($null -ne $reopenedWindow) 'Second launch did not restore the enabled operator window; inspect application-after-reopen evidence.'
 Assert-True ($agent.CloseMainWindow()) 'The reopened application window could not be closed to the tray.'
 Start-Sleep -Milliseconds 350
 $agent.Refresh()
