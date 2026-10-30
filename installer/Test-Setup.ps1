@@ -95,6 +95,13 @@ function Save-ApplicationEvidence([Diagnostics.Process]$Application, [string]$La
             Save-Wizard $candidate ("application-$Label-$index.png")
         }
     }
+    if ($script:lastOperatorWindowHandle -ne [IntPtr]::Zero -and -not $Application.HasExited) {
+        try {
+            $known = [Windows.Automation.AutomationElement]::FromHandle($script:lastOperatorWindowHandle)
+            $knownTexts = $known.FindAll([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text)))
+            Write-Host ('Known operator HWND text: ' + ((@($knownTexts | ForEach-Object { $_.Current.Name })) -join ' | '))
+        } catch { Write-Host 'Known operator HWND is no longer available.' }
+    }
     $records | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutputDirectory ("application-$Label.json"))
 }
 
@@ -102,7 +109,8 @@ function Close-ApplicationAsUser([Diagnostics.Process]$Application, $Window) {
     # Match the title-bar X: WinForms maps WM_SYSCOMMAND/SC_CLOSE to UserClosing.
     # Process.CloseMainWindow sends WM_CLOSE directly, which WinForms maps to
     # TaskManagerClosing and therefore does not exercise the close-to-tray handler.
-    Assert-True ([CentralBiometricaSetupTest.Native]::PostMessage([IntPtr]$Window.Current.NativeWindowHandle, 0x112, [IntPtr]0xF060, [IntPtr]::Zero)) 'Could not click the application title-bar close action.'
+    $script:lastOperatorWindowHandle = [IntPtr]$Window.Current.NativeWindowHandle
+    Assert-True ([CentralBiometricaSetupTest.Native]::PostMessage($script:lastOperatorWindowHandle, 0x112, [IntPtr]0xF060, [IntPtr]::Zero)) 'Could not click the application title-bar close action.'
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
     do {
         Start-Sleep -Milliseconds 100
@@ -176,6 +184,19 @@ function Invoke-Setup([string]$Label) {
     $log = Join-Path $OutputDirectory ($Label + '.log')
     $process = Start-Process -FilePath $SetupPath -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', ('/LOG="' + $log + '"')) -PassThru
     Assert-True ($process.WaitForExit(90000)) "Setup did not finish: $Label"
+    if ($process.ExitCode -ne 0) {
+        Get-Content -LiteralPath $log -Tail 35 | ForEach-Object { Write-Host $_ }
+        $running = Get-Process -Name 'AgenteFS80H' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $executable } | Select-Object -First 1
+        if ($running) {
+            Write-Host "PowerShell caller PID=$PID Session=$((Get-Process -Id $PID).SessionId), app PID=$($running.Id) Session=$($running.SessionId)"
+            Save-ApplicationEvidence $running 'after-failed-setup'
+            # Controlled diagnostic comparison: does the same graceful command work from the caller?
+            $probe = Start-Process -FilePath $executable -ArgumentList '--shutdown' -PassThru
+            $probeFinished = $probe.WaitForExit(5000)
+            $appExited = $running.WaitForExit(5000)
+            Write-Host "PowerShell shutdown probe finished=$probeFinished appExited=$appExited"
+        }
+    }
     Assert-True ($process.ExitCode -eq 0) "Setup failed with exit code $($process.ExitCode): $Label"
 }
 
@@ -240,6 +261,7 @@ function Invoke-Uninstall([string]$Label) {
 
 # Show the real branded wizard once; cancel before installation and preserve its native screenshot.
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Drawing
+$script:lastOperatorWindowHandle = [IntPtr]::Zero
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;

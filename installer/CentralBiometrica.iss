@@ -115,11 +115,13 @@ begin
   if not FileExists(Executable) then Exit;
   try
     if not RunningInstalledApplication(Executable) then Exit;
+    Log('Requesting application shutdown as ' + GetUserNameString + ': ' + Executable + ' --shutdown');
     if not Exec(Executable, '--shutdown', ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ExitCode) then
     begin
       Result := 'Não foi possível solicitar o encerramento da Central Biométrica. Encerre o aplicativo pela bandeja do Windows e tente novamente.';
       Exit;
     end;
+    Log('Shutdown helper completed with exit code ' + IntToStr(ExitCode));
     for Attempt := 1 to 100 do
     begin
       if not RunningInstalledApplication(Executable) then Exit;
