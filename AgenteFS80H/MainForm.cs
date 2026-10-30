@@ -58,25 +58,35 @@ internal sealed partial class MainForm : Form
         MinimumSize = new Size(860, 680);
         ClientSize = new Size(1040, 760);
 
-        var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Margin = Padding.Empty, Padding = Padding.Empty };
+        var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Margin = Padding.Empty, Padding = Padding.Empty };
+        shell.SuspendLayout();
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        shell.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
         shell.Controls.Add(BuildHeader(), 0, 0);
         shell.Controls.Add(BuildNavigation(), 0, 1);
+        actionMessage.Name = "actionMessage";
+        actionMessage.AccessibleRole = AccessibleRole.Alert;
+        actionMessage.ForeColor = CentralTheme.Danger;
+        actionMessage.Margin = new Padding(32, 0, 32, 12);
+        actionMessage.Visible = false;
+        actionMessage.TextChanged += (_, _) => actionMessage.Visible = !string.IsNullOrEmpty(actionMessage.Text);
+        shell.Controls.Add(actionMessage, 0, 2);
         var pages = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(28, 0, 28, 0) };
+        pages.SuspendLayout();
         pages.Controls.Add(settingsPage);
         pages.Controls.Add(readingPage);
-        shell.Controls.Add(pages, 0, 2);
+        shell.Controls.Add(pages, 0, 3);
         var footer = TextLabel("Fechar a janela mantém o leitor funcionando na bandeja do Windows. Esta etapa não aciona fechadura.", 10);
         footer.Dock = DockStyle.Fill;
         footer.AutoSize = false;
         footer.TextAlign = ContentAlignment.MiddleLeft;
         footer.Padding = new Padding(32, 8, 32, 8);
         footer.ForeColor = CentralTheme.Muted;
-        shell.Controls.Add(footer, 0, 3);
+        shell.Controls.Add(footer, 0, 4);
         Controls.Add(shell);
 
         BuildReadingPage();
@@ -96,6 +106,7 @@ internal sealed partial class MainForm : Form
         Shown += (_, _) => ReloadConfiguration();
         readingPage.SizeChanged += (_, _) => ResizeContent();
         settingsPage.SizeChanged += (_, _) => ResizeContent();
+        ResumeTree(shell);
         ResumeLayout(true);
         ReloadConfiguration();
         ShowPage(false);
@@ -105,6 +116,7 @@ internal sealed partial class MainForm : Form
     private Control BuildHeader()
     {
         var header = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = CentralTheme.Header, Padding = new Padding(32, 16, 32, 16), Margin = Padding.Empty, ColumnCount = 2 };
+        header.SuspendLayout();
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
         header.Controls.Add(new PictureBox { Image = logo, SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(208, 52), Anchor = AnchorStyles.Left, AccessibleName = "Central de Operações — Future Place" }, 0, 0);
@@ -120,6 +132,7 @@ internal sealed partial class MainForm : Form
     private Control BuildNavigation()
     {
         var row = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(32, 16, 32, 12), Margin = Padding.Empty, ColumnCount = 2 };
+        row.SuspendLayout();
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
         var tabs = Buttons(navigationReading, navigationSettings);
@@ -136,6 +149,7 @@ internal sealed partial class MainForm : Form
         var stack = Stack();
         var card = new CentralCard { Dock = DockStyle.Fill, AutoSize = true, MinimumSize = new Size(0, 290), Padding = new Padding(28, 30, 28, 26) };
         var hero = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2 };
+        hero.SuspendLayout();
         hero.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176));
         hero.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         hero.Controls.Add(fingerprint, 0, 0);
@@ -166,6 +180,7 @@ internal sealed partial class MainForm : Form
         var guide = Stack();
         Add(guide, Wrap("Como fazer a leitura", 15, true));
         var steps = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Top, ColumnCount = 3, Margin = new Padding(0, 12, 0, 0) };
+        steps.SuspendLayout();
         for (var i = 0; i < 3; i++) steps.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 3));
         var titles = new[] { "1. Coloque o dedo", "2. Retire quando pedir", "3. Repita para confirmar" };
         var copy = new[] { "Use o dedo já cadastrado no aparelho físico.", "Aguarde a orientação e retire completamente.", "Apresente o mesmo dedo e aguarde a decisão." };
@@ -245,11 +260,6 @@ internal sealed partial class MainForm : Form
         clearButton.Click += async (_, _) => await ClearPairingAsync();
         Add(preferences, Buttons(clearButton));
         Add(stack, Card(preferences));
-        actionMessage.AccessibleRole = AccessibleRole.Alert;
-        actionMessage.Name = "actionMessage";
-        actionMessage.Margin = new Padding(4, 8, 4, 20);
-        wrappingLabels.Add(actionMessage);
-        Add(stack, actionMessage);
         settingsPage.Controls.Add(stack);
     }
 
@@ -257,8 +267,14 @@ internal sealed partial class MainForm : Form
     private static TableLayoutPanel Stack()
     {
         var stack = new TableLayoutPanel { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Top, ColumnCount = 1, Margin = Padding.Empty, Padding = Padding.Empty };
+        stack.SuspendLayout();
         stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         return stack;
+    }
+    private static void ResumeTree(Control control)
+    {
+        foreach (Control child in control.Controls) ResumeTree(child);
+        control.ResumeLayout(true);
     }
     private static void Add(TableLayoutPanel stack, Control control)
     {
@@ -276,6 +292,7 @@ internal sealed partial class MainForm : Form
     private static FlowLayoutPanel Buttons(params Button[] buttons)
     {
         var panel = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Top, WrapContents = true, Margin = new Padding(0, 12, 0, 0) };
+        panel.SuspendLayout();
         panel.Controls.AddRange(buttons);
         return panel;
     }
@@ -303,6 +320,7 @@ internal sealed partial class MainForm : Form
     }
     private void ResizeContent()
     {
+        actionMessage.MaximumSize = new Size(Math.Max(240, ClientSize.Width - 64), 0);
         var full = Math.Max(320, settingsPage.ClientSize.Width - 68);
         foreach (var label in wrappingLabels) label.MaximumSize = new Size(full, 0);
         pairingState.MaximumSize = libraryState.MaximumSize = new Size(full, 0);
@@ -350,6 +368,7 @@ internal sealed partial class MainForm : Form
         if (exiting) return;
         statusTitle.Text = snapshot.Status == AgentStatus.Ready
             ? snapshot.Message.StartsWith("Retire o dedo", StringComparison.Ordinal) ? "Retire o dedo do leitor"
+                : snapshot.Message.StartsWith("Digital cadastrada", StringComparison.Ordinal) ? "Digital cadastrada"
                 : snapshot.Message.StartsWith("Cadastro confirmado", StringComparison.Ordinal) ? "Cadastro confirmado" : "Coloque o dedo no leitor"
             : StatusTitle(snapshot.Status);
         var accent = snapshot.Status switch

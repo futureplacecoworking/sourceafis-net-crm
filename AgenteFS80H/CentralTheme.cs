@@ -166,6 +166,10 @@ internal sealed class CentralButton : Button
     private bool hovered;
     private bool pressed;
     private bool selected;
+    private string? measuredCaption;
+    private Font? measuredFont;
+    private int measuredDpi;
+    private SizeF captionSize;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool Navigation { get; set; }
@@ -199,12 +203,24 @@ internal sealed class CentralButton : Button
 
     public override Size GetPreferredSize(Size proposedSize)
     {
-        var text = TextRenderer.MeasureText(Text, Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+        // Match the GDI+ painter. GDI/TextRenderer underestimates these embedded fonts and clips captions.
+        if (measuredCaption != Text || !ReferenceEquals(measuredFont, Font) || measuredDpi != DeviceDpi)
+        {
+            using var bitmap = new Bitmap(1, 1);
+            bitmap.SetResolution(DeviceDpi, DeviceDpi);
+            using var graphics = Graphics.FromImage(bitmap);
+            graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            using var format = new StringFormat { FormatFlags = StringFormatFlags.NoWrap };
+            captionSize = graphics.MeasureString(Text, Font, 10000, format);
+            measuredCaption = Text;
+            measuredFont = Font;
+            measuredDpi = DeviceDpi;
+        }
         var imageWidth = Image is null ? 0 : Image.Width + 8;
         var imageHeight = Image?.Height ?? 0;
         var dpi = DeviceDpi / 96F;
-        return new Size(Math.Max((int)(44 * dpi), text.Width + imageWidth + Padding.Horizontal + 8),
-            Math.Max((int)(44 * dpi), Math.Max(text.Height, imageHeight) + Padding.Vertical));
+        return new Size(Math.Max((int)(44 * dpi), (int)Math.Ceiling(captionSize.Width) + imageWidth + Padding.Horizontal + (int)(8 * dpi)),
+            Math.Max((int)(44 * dpi), Math.Max((int)Math.Ceiling(captionSize.Height), imageHeight) + Padding.Vertical));
     }
 
     protected override void OnPaintBackground(PaintEventArgs e) => e.Graphics.Clear(CentralTheme.ParentBackground(this));
@@ -315,6 +331,7 @@ internal sealed class CentralCard : Panel
         Margin = new Padding(0, 0, 0, 16);
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
             ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        SuspendLayout();
     }
 
     protected override void OnPaintBackground(PaintEventArgs e)

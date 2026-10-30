@@ -10,6 +10,7 @@ internal sealed partial class MainForm
             return;
         if (string.IsNullOrWhiteSpace(pairingCode.Text))
         {
+            actionMessage.ForeColor = CentralTheme.Danger;
             actionMessage.Text = "Informe o código gerado na Central.";
             pairingCode.Focus();
             return;
@@ -81,7 +82,7 @@ internal sealed partial class MainForm
         PendingOperation = finished.Task;
         busy = true;
         SetInputsEnabled(false);
-        actionMessage.ForeColor = Color.FromArgb(131, 40, 35);
+        actionMessage.ForeColor = CentralTheme.Primary;
         actionMessage.Text = "Aguarde…";
         try
         {
@@ -92,6 +93,7 @@ internal sealed partial class MainForm
         }
         catch
         {
+            actionMessage.ForeColor = CentralTheme.Danger;
             actionMessage.Text = safeFailure;
         }
         finally
@@ -133,6 +135,7 @@ internal sealed partial class MainForm
         }
         catch
         {
+            actionMessage.ForeColor = CentralTheme.Danger;
             actionMessage.Text = "Não foi possível alterar o início automático para este usuário do Windows.";
             changingStartup = true;
             startup.Checked = !startup.Checked;
