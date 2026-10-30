@@ -98,6 +98,21 @@ function Save-ApplicationEvidence([Diagnostics.Process]$Application, [string]$La
     $records | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutputDirectory ("application-$Label.json"))
 }
 
+function Close-ApplicationAsUser([Diagnostics.Process]$Application, $Window) {
+    # Match the title-bar X: WinForms maps WM_SYSCOMMAND/SC_CLOSE to UserClosing.
+    # Process.CloseMainWindow sends WM_CLOSE directly, which WinForms maps to
+    # TaskManagerClosing and therefore does not exercise the close-to-tray handler.
+    Assert-True ([CentralBiometricaSetupTest.Native]::PostMessage([IntPtr]$Window.Current.NativeWindowHandle, 0x112, [IntPtr]0xF060, [IntPtr]::Zero)) 'Could not click the application title-bar close action.'
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 100
+        $Application.Refresh()
+        $visibleWindows = @(Get-ApplicationWindows $Application | Where-Object { -not $_.Current.IsOffscreen })
+    } while ($visibleWindows.Count -gt 0 -and -not $Application.HasExited -and [DateTime]::UtcNow -lt $deadline)
+    Assert-True (-not $Application.HasExited) 'Clicking the title-bar X stopped the application instead of keeping it in the tray.'
+    Assert-True ($visibleWindows.Count -eq 0) 'Clicking the title-bar X did not hide the application windows.'
+}
+
 function Save-Wizard($Window, [string]$Name) {
     $rect = $Window.Current.BoundingRectangle
     $bitmap = New-Object Drawing.Bitmap([int]$rect.Width, [int]$rect.Height)
@@ -153,10 +168,7 @@ function Invoke-GraphicalInstall {
     } while (-not $operatorWindow -and [DateTime]::UtcNow -lt $deadline)
     if ($application) { Save-ApplicationEvidence $application 'after-concluir' }
     Assert-True ($null -ne $operatorWindow) 'Concluir did not open the enabled WinForms Leitura/Configurações page; inspect application-after-concluir evidence.'
-    Assert-True ($application.CloseMainWindow()) 'The installed main window could not be closed to the tray.'
-    Start-Sleep -Milliseconds 350
-    $application.Refresh()
-    Assert-True (-not $application.HasExited) 'Closing the installed window stopped the reader instead of keeping it in the tray.'
+    Close-ApplicationAsUser $application $operatorWindow
     return $application
 }
 
@@ -290,10 +302,7 @@ do {
 } while (-not $reopenedWindow -and [DateTime]::UtcNow -lt $deadline)
 Save-ApplicationEvidence $agent 'after-reopen'
 Assert-True ($null -ne $reopenedWindow) 'Second launch did not restore the enabled operator window; inspect application-after-reopen evidence.'
-Assert-True ($agent.CloseMainWindow()) 'The reopened application window could not be closed to the tray.'
-Start-Sleep -Milliseconds 350
-$agent.Refresh()
-Assert-True (-not $agent.HasExited) 'Closing the main window stopped the background reader.'
+Close-ApplicationAsUser $agent $reopenedWindow
 
 # An update must preserve the preference if the receptionist disabled Windows startup.
 Remove-ItemProperty -LiteralPath $runKey -Name $runName
