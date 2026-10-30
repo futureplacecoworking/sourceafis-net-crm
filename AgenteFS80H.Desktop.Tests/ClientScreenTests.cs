@@ -139,6 +139,38 @@ public class ClientScreenTests
         Assert.That(ui.Find<Button>("clientScreenButton").Enabled, Is.False);
     }
 
+    [Test]
+    public void AnimationAdvancesWhileTheAuthorizedInstructionRemainsStable()
+    {
+        using var ui = new UiFixture();
+        using var client = OpenClient(ui);
+        Key(client, Keys.F11);
+        client.ClientSize = new Size(900, 650);
+        ui.Snapshot(AgentStatus.Authorized, "Autorizado pela Central.");
+        var text = UiFixture.VisibleText(client);
+        var output = Environment.GetEnvironmentVariable("FS80H_UI_OUTPUT") ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "artifacts", "ui");
+        var frames = Path.Combine(output, "client-motion");
+        Directory.CreateDirectory(frames);
+        byte[]? first = null;
+        byte[]? last = null;
+        for (var i = 0; i < 20; i++)
+        {
+            UiFixture.Pump();
+            using var bitmap = new Bitmap(client.Width, client.Height);
+            client.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
+            using var memory = new MemoryStream();
+            bitmap.Save(memory, ImageFormat.Png);
+            last = memory.ToArray();
+            first ??= last;
+            File.WriteAllBytes(Path.Combine(frames, $"frame-{i:000}.png"), last);
+            var until = DateTime.UtcNow.AddMilliseconds(80);
+            while (DateTime.UtcNow < until) { UiFixture.Pump(); Thread.Sleep(10); }
+        }
+        Assert.That(last, Is.Not.EqualTo(first), "A animação precisa avançar enquanto a tela está visível.");
+        Assert.That(UiFixture.VisibleText(client), Is.EqualTo(text));
+        Assert.That(ui.Store.Writes, Is.Zero);
+    }
+
     [TestCase("client-ready", AgentStatus.Ready, "Coloque o dedo cadastrado no leitor.")]
     [TestCase("client-lift", AgentStatus.Capturing, "Retire o dedo completamente do leitor.")]
     [TestCase("client-repeat", AgentStatus.Capturing, "Coloque o mesmo dedo novamente para confirmar.")]
@@ -179,7 +211,7 @@ public class ClientScreenTests
     private static Control Find(Form form, string name) => form.Controls.Find(name, true).Single();
     private static void Key(Form form, Keys key)
     {
-        var message = Message.Create(form.Handle, 0x100, (IntPtr)key, IntPtr.Zero);
+        var message = Message.Create(form.Handle, 0x100, (IntPtr)(int)key, IntPtr.Zero);
         var method = form.GetType().GetMethod("ProcessCmdKey", BindingFlags.Instance | BindingFlags.NonPublic)!;
         Assert.That(method.Invoke(form, new object[] { message, key }), Is.EqualTo(true));
         UiFixture.Pump();

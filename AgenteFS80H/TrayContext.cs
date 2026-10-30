@@ -22,6 +22,7 @@ internal sealed class TrayContext : ApplicationContext
         _ = form.Handle;
         menu = new ContextMenuStrip();
         menu.Items.Add("Abrir leitor", null, (_, _) => ShowForm());
+        menu.Items.Add("Tela do cliente", null, (_, _) => form.ShowClientScreen());
         menu.Items.Add("Configurações", null, (_, _) => { form.ShowSettings(); ShowForm(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Encerrar agente", null, async (_, _) => await RequestExitAsync());
