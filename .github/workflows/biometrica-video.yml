@@ -1,0 +1,36 @@
+name: Central Biométrica — vídeo completo do cliente
+
+on:
+  push:
+    branches: [codex/biometrica-video-completo]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Capturar todos os estados da tela real do cliente
+        timeout-minutes: 5
+        env:
+          FS80H_VIDEO_OUTPUT: ${{ github.workspace }}/artifacts/client-demo
+        run: dotnet test AgenteFS80H.Desktop.Tests/AgenteFS80H.Desktop.Tests.csproj --filter FullyQualifiedName~ClientVideoCapture.CaptureCompleteClientDemo --configuration Release --runtime win-x64 -p:SelfContained=false --logger trx --results-directory artifacts/test-results/client-video
+      - name: Disponibilizar frames reais e roteiro do vídeo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-Biometrica-video-frames
+          path: |
+            artifacts/client-demo/
+            artifacts/test-results/client-video/
+          if-no-files-found: error
+          retention-days: 14
