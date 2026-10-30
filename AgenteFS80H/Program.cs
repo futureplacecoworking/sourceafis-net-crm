@@ -56,7 +56,7 @@ internal static class Program
             // Never display exception details: SDK/HTTP messages can carry secrets.
             MessageBox.Show(
                 "Não foi possível iniciar o agente. Se os dados locais estiverem protegidos por outro usuário do Windows ou danificados, reinstale escolhendo explicitamente remover os dados e faça um novo pareamento. Nenhum dado foi apagado automaticamente.",
-                "Agente FS80H da Central", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                AppIdentity.Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -88,5 +88,5 @@ internal static class Program
 
     private static void ShowSafeError() => MessageBox.Show(
         "O agente encontrou um problema. Confira o estado exibido e encerre e abra o programa novamente. Nenhuma porta foi acionada.",
-        "Agente FS80H da Central", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        AppIdentity.Name, MessageBoxButtons.OK, MessageBoxIcon.Error);
 }

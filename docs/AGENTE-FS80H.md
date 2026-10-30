@@ -1,10 +1,10 @@
-# Agente FS80H para a Central
+# Central Biométrica para Windows
 
 Aplicativo para Windows 10/11 de 64 bits, com ícone na bandeja, que captura digitais no Futronic FS80H e compara os templates com o SourceAFIS neste computador. A Central cadastra pessoas, decide a autorização com as regras atuais e registra os eventos. **Esta versão não aciona fechadura.** Uma autorização exibida não significa que uma porta abriu.
 
 ## Usar no dia a dia
 
-Abra **Agente FS80H** no menu Iniciar. A página **Leitura** mostra a orientação em destaque. **A leitura começa automaticamente no aparelho FS80H conectado por USB**: coloque o dedo cadastrado, retire-o quando a janela pedir e apresente o mesmo dedo novamente. A instrução muda a cada etapa; aguarde o resultado da Central.
+Abra **Central Biométrica** no menu Iniciar. A página **Leitura** mostra a orientação em destaque. **A leitura começa automaticamente no aparelho FS80H conectado por USB**: coloque o dedo cadastrado, retire-o quando a janela pedir e apresente o mesmo dedo novamente. A instrução muda a cada etapa; aguarde o resultado da Central.
 
 Use **Configurações** para conectar o computador à Central, selecionar a DLL de captura e escolher o início com Windows. **Abrir Central** leva ao CRM; cadastros e horários ficam em **Automação e sensores → Leitor da recepção**. As duas páginas preservam a configuração e os campos digitados ao alternar.
 
@@ -22,25 +22,42 @@ Uma falha, desconexão ou revogação remove imediatamente a apresentação de a
 
 ## Baixar e instalar
 
-1. No GitHub deste fork, abra **Actions → Agente FS80H — Windows** e escolha uma execução concluída com sucesso da versão que será instalada.
-2. Em **Artifacts**, baixe **`AgenteFS80H-instalacao-Windows`** para instalar com uma única extração. A opção `AgenteFS80H-win-x64` continua disponível com o ZIP interno e seu checksum `.sha256`; nessa opção, extraia também o ZIP interno.
-3. Extraia **todo** o pacote de instalação para uma pasta. Devem aparecer `Install.ps1`, `Uninstall.ps1`, `LEIA-ME.md`, `LICENSE`, `build-info.json` e a pasta `app`. Não execute o instalador de dentro do ZIP.
-4. Nessa pasta, abra o PowerShell da sua conta Windows e execute:
+1. Baixe [Central-Biometrica-Setup.exe](https://github.com/futureplacecoworking/sourceafis-net-crm/releases/latest/download/Central-Biometrica-Setup.exe).
+2. Abra o arquivo e clique em **Instalar**. O assistente exibe a logo e o progresso.
+3. Clique em **Concluir** para abrir a **Central Biométrica**.
 
-   ```powershell
-   powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install.ps1
-   ```
+Não é necessário extrair ZIP, abrir PowerShell ou instalar o .NET. O instalador
+cria atalhos no menu Iniciar e na área de trabalho, registra o aplicativo nas
+Configurações do Windows e ativa o início automático para uma instalação nova.
+Ao fechar a janela, o aplicativo continua na bandeja. Funciona na conta Windows
+conectada; o driver USB oficial continua sendo um componente separado.
 
-O instalador usa `%LOCALAPPDATA%\Programs\Futureplace\AgenteFS80H`, cria um atalho no menu Iniciar e configura a inicialização ao entrar nessa conta Windows. Não exige administrador nem uma instalação separada do .NET; o runtime .NET 10 acompanha o aplicativo. O driver USB pode exigir administrador. Para instalar sem iniciar agora, acrescente `-NoStart`; para desativar a inicialização automática, acrescente `-NoStartup`.
+Quem já instalou a versão anterior mantém o pareamento, as digitais e o caminho
+da DLL nesta mesma conta. Atualizações também preservam a preferência de início
+automático. A troca dos arquivos aguarda o encerramento seguro do app.
 
-Para conferir o ZIP antes de instalar:
+## Versões e atualização pelo app
 
-```powershell
-Get-FileHash .\AgenteFS80H-win-x64.zip -Algorithm SHA256
-Get-Content .\AgenteFS80H-win-x64.zip.sha256
-```
+A versão aparece no rodapé e em **Configurações**. O [histórico de alterações](ALTERACOES-CENTRAL-BIOMETRICA.md)
+registra cada entrega. Uma nova versão publicada aparece em uma barra com
+**Atualizar agora** e **Depois**; **Configurações → Verificar atualizações** permite
+consultar manualmente. A consulta automática ocorre ao abrir e a cada seis horas,
+inclusive enquanto o aplicativo está na bandeja. Publicações apenas do CRM não
+exigem uma nova versão Windows.
 
-Compare os valores com o checksum do mesmo download. Os pacotes deste fluxo não têm assinatura Authenticode; confira o repositório e o commit em `build-info.json` antes de executar. Não altere a política de execução global do computador.
+Ao aceitar, o aplicativo baixa o instalador da release oficial, confere origem,
+versão e SHA256 e mostra o progresso. O instalador encerra a versão atual,
+substitui os arquivos e abre a nova, preservando a configuração. Uma falha na
+consulta ou no download não interrompe as leituras. Os pacotes não possuem
+assinatura Authenticode sem um certificado de publicação configurado.
+
+## Diagnóstico automático
+
+Em **Configurações**, o diagnóstico informa pareamento, presença e arquitetura
+do arquivo de captura, resposta da Central e evidência de funcionamento do
+leitor. O botão **Atualizar diagnóstico** repete a conferência passiva; não abre
+uma segunda captura USB nem cadastra ou apaga digitais. Uma DLL encontrada não
+confirma sozinha que o leitor/driver estão funcionando.
 
 ## Preparar o leitor
 
@@ -52,7 +69,7 @@ Os componentes proprietários Futronic **não acompanham o aplicativo nem este r
 
 Instale o driver oficial, conecte o FS80H por USB e confirme que o dispositivo aparece sem erro no Gerenciador de Dispositivos. Confira a captura no programa de exemplo do fabricante. Em seguida, feche o exemplo para liberar o leitor.
 
-No Agente FS80H, abra **Configurações** e selecione a DLL oficial x64. Mantenha-a em uma pasta permanente da conta Windows; o aplicativo guarda a localização e valida a arquitetura antes de carregá-la. Bibliotecas de outros projetos ou sites não fazem parte da instalação suportada. As condições de uso e redistribuição desses componentes são as do fabricante; este projeto não concede licença sobre eles.
+Na Central Biométrica, abra **Configurações** e selecione a DLL oficial x64. Mantenha-a em uma pasta permanente da conta Windows; o aplicativo guarda a localização e valida a arquitetura antes de carregá-la. Bibliotecas de outros projetos ou sites não fazem parte da instalação suportada. As condições de uso e redistribuição desses componentes são as do fabricante; este projeto não concede licença sobre eles.
 
 O [fabricante especifica](https://www.futronic-tech.com/pro-detail.php?pro_id=1543) imagem de 320 × 480 pixels, 500 DPI, 8 bits e Live Finger Detection para o **FS80H**. O FS81H não oferece LFD. Nesta entrega, o modelo suportado é FS80H com LFD habilitada.
 
@@ -78,27 +95,19 @@ Token de dispositivo e templates ficam cifrados com **DPAPI CurrentUser** em `%L
 
 Revogue um cadastro ou o leitor pela Central. O bloqueio no servidor é imediato; quando o aplicativo sincroniza, apaga os templates locais removidos e confirma a exclusão à Central. Aguarde essa confirmação antes de desligar ou desinstalar o leitor. Um computador desligado não pode confirmar remoção física dos seus arquivos.
 
-Para atualizar, execute `Install.ps1` de um novo pacote completo. O instalador pede ao agente que encerre, substitui o aplicativo e preserva os dados cifrados. Se o agente não encerrar, a atualização é interrompida: feche-o pela bandeja e tente novamente. O instalador não encerra processos à força.
+Para atualizar manualmente, execute o novo `Central-Biometrica-Setup.exe`. O instalador pede ao aplicativo que encerre, substitui o aplicativo e preserva os dados cifrados. Se o agente não encerrar, a atualização é interrompida: feche-o pela bandeja e tente novamente. O instalador não encerra processos à força.
 
 ## Desinstalar
 
-Use **Configurações → Aplicativos → Futureplace — Agente FS80H → Desinstalar**, ou execute:
+Use **Configurações do Windows → Aplicativos → Central Biométrica → Desinstalar**.
+O desinstalador gráfico encerra o aplicativo, remove arquivos, atalhos e início
+automático e preserva o pareamento/digitais desta conta para uma reinstalação.
+O driver e a DLL externa do fabricante são preservados.
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\Futureplace\AgenteFS80H\Uninstall.ps1"
-```
-
-O desinstalador pergunta explicitamente se deve **manter** os dados cifrados para reinstalação nesta conta, **remover** todos os dados locais ou **cancelar**. Enter cancela. A remoção é definitiva e exige novo pareamento/cadastro. Para uma execução administrada com decisão já tomada, passe exatamente uma opção:
-
-```powershell
-# Preservar explicitamente os dados locais:
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Uninstall.ps1 -KeepData
-
-# Excluir explicitamente os dados locais:
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Uninstall.ps1 -RemoveData
-```
-
-Revogue o leitor na Central e aguarde a confirmação de remoção com o agente conectado antes de desinstalar. A desinstalação local não revoga credenciais no servidor. O driver USB e a DLL externa do fabricante são preservados.
+Para eliminar as digitais locais, use **Limpar pareamento e digitais** dentro do
+aplicativo antes de desinstalar; a ação pede confirmação. Para revogar acesso no
+servidor, revogue o leitor pela Central e aguarde a confirmação com o app
+conectado. Desinstalar localmente não revoga o dispositivo no servidor.
 
 ## Validação da entrega
 

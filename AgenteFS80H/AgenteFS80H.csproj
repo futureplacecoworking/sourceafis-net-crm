@@ -15,10 +15,10 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Futureplace.AgenteFS80H.Desktop</RootNamespace>
     <AssemblyName>AgenteFS80H</AssemblyName>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <Company>Future Place Coworking</Company>
-    <Product>Agente FS80H da Central</Product>
-    <Description>Captura e identificação local; autorização pela Central.</Description>
+    <Product>Central Biométrica</Product>
+    <Description>Central Biométrica — leitor da recepção Future Place.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../AgenteFS80H.Core/AgenteFS80H.Core.csproj" />

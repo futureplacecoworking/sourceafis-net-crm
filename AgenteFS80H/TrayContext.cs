@@ -21,15 +21,15 @@ internal sealed class TrayContext : ApplicationContext
         form = new MainForm(runtime, lifetime.Token);
         _ = form.Handle;
         menu = new ContextMenuStrip();
-        menu.Items.Add("Abrir leitor", null, (_, _) => ShowForm());
+        menu.Items.Add("Abrir Central Biométrica", null, (_, _) => ShowForm());
         menu.Items.Add("Tela do cliente", null, (_, _) => form.ShowClientScreen());
         menu.Items.Add("Configurações", null, (_, _) => { form.ShowSettings(); ShowForm(); });
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Encerrar agente", null, async (_, _) => await RequestExitAsync());
+        menu.Items.Add("Encerrar Central Biométrica", null, async (_, _) => await RequestExitAsync());
         tray = new NotifyIcon
         {
             Icon = normalIcon,
-            Text = "Agente FS80H da Central",
+            Text = AppIdentity.Name,
             ContextMenuStrip = menu,
             Visible = true
         };
@@ -40,6 +40,7 @@ internal sealed class TrayContext : ApplicationContext
         showWait = ThreadPool.RegisterWaitForSingleObject(show,
             (_, _) => OnUi(ShowForm), null, Timeout.Infinite, false);
         ApplySnapshot(runtime.Snapshot);
+        form.StartUpdateChecks();
         runTask = Task.Run(() => RunAsync(lifetime.Token));
         if (!background)
             ShowForm();
@@ -71,7 +72,8 @@ internal sealed class TrayContext : ApplicationContext
         tray.Icon = snapshot.Status is AgentStatus.Error or AgentStatus.Offline or AgentStatus.Revoked
             ? warningIcon : normalIcon;
         string title = global::Futureplace.AgenteFS80H.Desktop.MainForm.StatusTitle(snapshot.Status);
-        tray.Text = ("FS80H — " + title)[..Math.Min(63, ("FS80H — " + title).Length)];
+        var trayCaption = AppIdentity.Name + " — " + title;
+        tray.Text = trayCaption[..Math.Min(63, trayCaption.Length)];
         if (snapshot.Status == AgentStatus.Authorized && previousStatus != AgentStatus.Authorized)
             tray.ShowBalloonTip(5000, "Decisão da Central",
                 "Autorizado pela Central. Nenhuma porta foi acionada.", ToolTipIcon.Info);
@@ -114,7 +116,7 @@ internal sealed class TrayContext : ApplicationContext
         exiting = true;
         menu.Enabled = false;
         form.SetExiting();
-        tray.Text = "FS80H — Encerrando";
+        tray.Text = "Central Biométrica — Encerrando";
         lifetime.Cancel();
         await runTask;
         await form.PendingOperation;

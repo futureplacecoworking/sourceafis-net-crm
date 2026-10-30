@@ -16,7 +16,7 @@ internal sealed class ClientScreenForm : Form
     {
         SuspendLayout();
         Name = "clientScreen";
-        Text = "Future Place — Boas-vindas";
+        Text = "Central Biométrica — Cliente";
         Icon = CentralTheme.AppIcon();
         BackColor = CentralTheme.Background;
         Font = CentralTheme.Body(11);

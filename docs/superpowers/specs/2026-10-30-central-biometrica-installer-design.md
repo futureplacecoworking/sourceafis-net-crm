@@ -32,3 +32,17 @@ duplicaria funções consolidadas do instalador.
 
 O instalador não terá assinatura Authenticode sem certificado configurado. Não
 desativar nem orientar desativação de proteções do Windows/Chrome.
+
+## Adições autorizadas durante o trabalho
+
+- Luiz pediu atualização pelo próprio app: consultar a release pública oficial
+  na inicialização e a cada seis horas; oferecer Atualizar agora/Depois, com
+  progresso. Só executar após ação da recepcionista e validação da versão,
+  origem e SHA256; falhas não alteram as leituras ou decisões de acesso.
+- Publicar EXE/manifesto/checksum automaticamente após os testes no master,
+  com tag imutável derivada da versão do projeto. Sem tokens dentro do app.
+- Luiz autorizou diagnóstico automático: conferência passiva de configuração,
+  arquitetura da DLL, último retorno da Central e evidência real do leitor,
+  sem abrir outra captura nem fingir detectar a causa de qualquer erro.
+- Alertas de leitor offline e porta aberta são tratados no repositório do CRM,
+  com dados reais; a integração física do hub permanece necessária para portas.
