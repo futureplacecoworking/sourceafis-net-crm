@@ -23,8 +23,8 @@ Uma falha, desconexão ou revogação remove imediatamente a apresentação de a
 ## Baixar e instalar
 
 1. No GitHub deste fork, abra **Actions → Agente FS80H — Windows** e escolha uma execução concluída com sucesso da versão que será instalada.
-2. Em **Artifacts**, baixe `AgenteFS80H-win-x64`. O GitHub fornece um ZIP externo; extraia-o para obter `AgenteFS80H-win-x64.zip` e o checksum `.sha256`. Um rascunho de release revisado também pode fornecer esses arquivos diretamente.
-3. Extraia **todo** o `AgenteFS80H-win-x64.zip` para uma pasta. Devem aparecer `Install.ps1`, `Uninstall.ps1`, `LEIA-ME.md`, `LICENSE`, `build-info.json` e a pasta `app`. Não execute o instalador de dentro do ZIP.
+2. Em **Artifacts**, baixe **`AgenteFS80H-instalacao-Windows`** para instalar com uma única extração. A opção `AgenteFS80H-win-x64` continua disponível com o ZIP interno e seu checksum `.sha256`; nessa opção, extraia também o ZIP interno.
+3. Extraia **todo** o pacote de instalação para uma pasta. Devem aparecer `Install.ps1`, `Uninstall.ps1`, `LEIA-ME.md`, `LICENSE`, `build-info.json` e a pasta `app`. Não execute o instalador de dentro do ZIP.
 4. Nessa pasta, abra o PowerShell da sua conta Windows e execute:
 
    ```powershell

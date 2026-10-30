@@ -110,6 +110,8 @@ internal sealed class ClientScreenForm : Form
             WindowState = FormWindowState.Maximized;
             Show();
         }
+        if (WindowState == FormWindowState.Minimized)
+            WindowState = FormBorderStyle == FormBorderStyle.None ? FormWindowState.Maximized : FormWindowState.Normal;
         Activate();
         BringToFront();
     }
