@@ -92,7 +92,8 @@ public class AppUpdateUiTests
         ui.Click("checkUpdatesButton");
         PumpUntil(() => ui.Find<Control>("updateBanner").Visible);
         ui.Click("installUpdateButton");
-        PumpUntil(() => ui.Find<Control>("updateMessage").Text.Contains("Não foi possível instalar"));
+        PumpUntil(() => ui.Find<Control>("updateMessage").Text.Contains("Não foi possível instalar")
+            && ui.Find<Button>("installUpdateButton").Enabled);
         Assert.That(server.InstallerRequests, Is.EqualTo(1));
         Assert.That(ui.Find<Control>("updateProgress").Visible, Is.True);
         Assert.That(ui.Find<Button>("installUpdateButton").Enabled, Is.True);
