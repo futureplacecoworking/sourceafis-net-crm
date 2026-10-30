@@ -2,6 +2,8 @@
 
 Este fork inclui um aplicativo de bandeja para Windows 10/11 x64, com captura Futronic FS80H,
 comparação SourceAFIS local e autorização pela Central de Operações.
+O app usa a identidade visual da Central, com páginas **Leitura** e **Configurações**,
+orientações de captura em destaque e fontes/arte incorporadas para uso offline da interface.
 O pacote autocontido e o instalador por usuário são gerados pelo workflow **Agente FS80H — Windows**.
 [Instalação, pareamento e operação em português](docs/AGENTE-FS80H.md).
 Nenhuma fechadura é acionada nesta etapa. Driver e DLL oficiais são obtidos separadamente do fabricante.

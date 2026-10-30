@@ -2,6 +2,14 @@
 
 Aplicativo para Windows 10/11 de 64 bits, com ícone na bandeja, que captura digitais no Futronic FS80H e compara os templates com o SourceAFIS neste computador. A Central cadastra pessoas, decide a autorização com as regras atuais e registra os eventos. **Esta versão não aciona fechadura.** Uma autorização exibida não significa que uma porta abriu.
 
+## Usar no dia a dia
+
+Abra **Agente FS80H** no menu Iniciar. A página **Leitura** mostra a orientação em destaque. **A leitura começa automaticamente no aparelho FS80H conectado por USB**: coloque o dedo cadastrado, retire-o quando a janela pedir e apresente o mesmo dedo novamente. A instrução muda a cada etapa; aguarde o resultado da Central.
+
+Use **Configurações** para conectar o computador à Central, selecionar a DLL de captura e escolher o início com Windows. **Abrir Central** leva ao CRM; cadastros e horários ficam em **Automação e sensores → Leitor da recepção**. As duas páginas preservam a configuração e os campos digitados ao alternar.
+
+O visual usa a marca, cores e fontes da Central. As fontes acompanham o aplicativo e não são baixadas durante o uso. A interface mantém texto junto das cores e acompanha a escala do Windows.
+
 ## Baixar e instalar
 
 1. No GitHub deste fork, abra **Actions → Agente FS80H — Windows** e escolha uma execução concluída com sucesso da versão que será instalada.
@@ -29,18 +37,19 @@ Compare os valores com o checksum do mesmo download. Os pacotes deste fluxo não
 Os componentes proprietários Futronic **não acompanham o aplicativo nem este repositório**. Obtenha-os pela [página oficial de downloads](https://www.futronic-tech.com/download.php):
 
 - [Driver USB assinado, Windows 8/8.1/10/11, 32 e 64 bits](https://www.futronic-tech.com/futronic/attachment/upload/futronic/download/ftrDriverSetup_win8_whql_3471.zip), publicado como versão 10.0.0.1.
-- [Exemplo/API de captura para Windows](https://www.futronic-tech.com/futronic/attachment/upload/futronic/download/ftrScanApiEx_v4.5.zip), com a biblioteca `ftrScanAPI.dll`. Escolha a variante **x64/AMD64**, não a biblioteca x86 de mesmo nome.
+- [Exemplo/API de captura para Windows](https://www.futronic-tech.com/futronic/attachment/upload/futronic/download/ftrScanApiEx_v4.5.zip), para testar o aparelho. A DLL incluída nesse demo é **x86 (32 bits)** e não serve no agente x64.
+- A biblioteca `ftrScanAPI.dll` **x64/AMD64 (64 bits)** deve vir do SDK Windows do fabricante. O instalador [SDK 4.2.2084](https://www.futronic-tech.com/download/ftp/Windows_SDK_v4.2_2084.rar) contém as duas arquiteturas; selecione a de 64 bits. A arquitetura do instalador `.exe` não determina a arquitetura das DLLs que ele contém.
 
 Instale o driver oficial, conecte o FS80H por USB e confirme que o dispositivo aparece sem erro no Gerenciador de Dispositivos. Confira a captura no programa de exemplo do fabricante. Em seguida, feche o exemplo para liberar o leitor.
 
-No Agente FS80H, selecione a DLL oficial x64 pela interface. Mantenha-a em uma pasta permanente da conta Windows; o aplicativo guarda a localização e valida a arquitetura antes de carregá-la. Bibliotecas de outros projetos ou sites não fazem parte da instalação suportada. As condições de uso e redistribuição desses componentes são as do fabricante; este projeto não concede licença sobre eles.
+No Agente FS80H, abra **Configurações** e selecione a DLL oficial x64. Mantenha-a em uma pasta permanente da conta Windows; o aplicativo guarda a localização e valida a arquitetura antes de carregá-la. Bibliotecas de outros projetos ou sites não fazem parte da instalação suportada. As condições de uso e redistribuição desses componentes são as do fabricante; este projeto não concede licença sobre eles.
 
 O [fabricante especifica](https://www.futronic-tech.com/pro-detail.php?pro_id=1543) imagem de 320 × 480 pixels, 500 DPI, 8 bits e Live Finger Detection para o **FS80H**. O FS81H não oferece LFD. Nesta entrega, o modelo suportado é FS80H com LFD habilitada.
 
 ## Parear e cadastrar
 
 1. Na Central, um administrador humano abre **Automação e sensores › Leitor da recepção**, cria o leitor e gera um código de pareamento temporário.
-2. No aplicativo Windows, informe a **URL HTTPS da Central**, como `https://central.futureplacecoworking.com.br`, e o **código de pareamento**. O aplicativo obtém a configuração pública da Central automaticamente; não é necessário procurar ou digitar chaves técnicas. Confirme o pareamento. Use apenas a Central da sua organização; o código é temporário e de uso único.
+2. No aplicativo Windows, abra **Configurações** e informe a **URL HTTPS da Central**, como `https://central.futureplacecoworking.com.br`, e o **código de pareamento**. O aplicativo obtém a configuração pública da Central automaticamente; não é necessário procurar ou digitar chaves técnicas. Confirme o pareamento. Use apenas a Central da sua organização; o código é temporário e de uso único.
 3. Em **Automação e sensores**, solicite o cadastro no leitor para a pessoa escolhida. O cartão existente em Digitais é apenas consultado como vínculo; a tela, os controles e os registros manuais das fechaduras permanecem intactos.
 4. Siga o estado exibido pelo aplicativo: apresente o dedo, retire-o completamente e apresente o mesmo dedo novamente. São necessárias duas leituras consistentes. O cadastro também recusa digital já associada a outro cadastro local.
 5. Na Central, configure as permissões e horários do cadastro. Cadastrar uma digital, sozinho, não autoriza acesso.
@@ -53,7 +62,7 @@ Se a rede cair, a Central ficar indisponível ou o leitor apresentar erro, o est
 
 ## Bandeja, dados e revogação
 
-Fechar a janela mantém o aplicativo na bandeja. Use o ícone para abrir a janela ou encerrar o agente. A inicialização automática usa a chave de registro da conta atual `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, valor `FutureplaceAgenteFS80H`.
+Fechar a janela mantém o aplicativo na bandeja. Use o ícone para abrir o leitor, acessar as configurações ou encerrar o agente. A inicialização automática usa a chave de registro da conta atual `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, valor `FutureplaceAgenteFS80H`.
 
 Token de dispositivo e templates ficam cifrados com **DPAPI CurrentUser** em `%LOCALAPPDATA%\Futureplace\AgenteFS80H\data`. A proteção depende da conta Windows; os arquivos não são uma forma portável de backup e não devem ser enviados a suporte. Não copie imagens, templates, token ou pastas de dados para tickets, chats ou logs. Imagens de captura são transitórias.
 
@@ -83,10 +92,10 @@ Revogue o leitor na Central e aguarde a confirmação de remoção com o agente 
 
 ## Validação da entrega
 
-O workflow Windows executa os testes existentes do SourceAFIS e os testes do agente, publica `win-x64` autocontido e fornece o ZIP instalável, checksum e resultados `.trx`. Conforme a regra deste projeto, os testes são executados **somente no CI do GitHub**. Não inclua dados biométricos reais nos testes.
+O workflow Windows executa os testes existentes do SourceAFIS, os testes do agente e os testes da janela, publica `win-x64` autocontido e fornece o ZIP instalável, checksum, resultados `.trx` e capturas de estados sintéticos da interface. Conforme a regra deste projeto, os testes são executados **somente no CI do GitHub**. Não inclua dados biométricos reais nos testes.
 
 Uma release é opcional: um mantenedor deve executar o workflow manualmente com `create_draft_release` ativado e uma tag como `agente-fs80h-v1.0.0`. O fluxo cria apenas um **rascunho**, depois dos testes; a publicação exige revisão humana no GitHub.
 
-O CI usa leitores simulados. Antes de uso na recepção, é necessário instalar o pacote no PC do leitor e validar captura, LFD, duas leituras com retirada, duplicidade/ambiguidade, autorização e negação pela Central, perda de conexão e revogação com confirmação. A captura de hardware e a exibição da interface não são verificadas a partir do ambiente de desenvolvimento em nuvem.
+O CI usa leitores simulados e verifica a janela em Windows. Antes de uso na recepção, é necessário instalar o pacote no PC do leitor e validar captura, LFD, duas leituras com retirada, duplicidade/ambiguidade, autorização e negação pela Central, perda de conexão e revogação com confirmação. Os testes da janela e suas capturas não validam o sensor físico.
 
 O reconhecimento usa [SourceAFIS for .NET](https://github.com/robertvazan/sourceafis-net), sob Apache 2.0; a licença acompanha o pacote. O algoritmo e suas dependências existentes são preservados nesta integração.

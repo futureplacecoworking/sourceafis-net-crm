@@ -7,6 +7,7 @@ on:
       - 'AgenteFS80H/**'
       - 'AgenteFS80H.Core/**'
       - 'AgenteFS80H.Tests/**'
+      - 'AgenteFS80H.Desktop.Tests/**'
       - 'SourceAFIS/**'
       - 'SourceAFIS.Tests/**'
       - 'installer/**'
@@ -17,6 +18,7 @@ on:
       - 'AgenteFS80H/**'
       - 'AgenteFS80H.Core/**'
       - 'AgenteFS80H.Tests/**'
+      - 'AgenteFS80H.Desktop.Tests/**'
       - 'SourceAFIS/**'
       - 'SourceAFIS.Tests/**'
       - 'installer/**'
@@ -66,6 +68,11 @@ jobs:
         run: dotnet test SourceAFIS.Tests/SourceAFIS.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/sourceafis
       - name: Testar protocolo, proteção e fluxo do agente
         run: dotnet test AgenteFS80H.Tests/AgenteFS80H.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/agente
+      - name: Testar a interface Windows e gerar prévias nativas
+        timeout-minutes: 5
+        env:
+          FS80H_UI_OUTPUT: ${{ github.workspace }}/artifacts/ui
+        run: dotnet test AgenteFS80H.Desktop.Tests/AgenteFS80H.Desktop.Tests.csproj --configuration Release --runtime win-x64 -p:SelfContained=false --logger trx --blame-hang --blame-hang-timeout 45s --blame-hang-dump-type none --results-directory artifacts/test-results/desktop
       - name: Publicar Windows x64 autocontido
         run: dotnet publish AgenteFS80H/AgenteFS80H.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/bundle/app /p:PublishSingleFile=false /p:PublishTrimmed=false /p:PublishReadyToRun=false
       - name: Preparar pacote instalável
@@ -139,6 +146,14 @@ jobs:
           path: artifacts/test-results/**/*.trx
           if-no-files-found: warn
           retention-days: 14
+      - name: Disponibilizar prévias da interface Windows
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgenteFS80H-ui-previews
+          path: artifacts/ui/*.png
+          if-no-files-found: warn
+          retention-days: 30
 
   draft-release:
     name: Criar rascunho solicitado manualmente
