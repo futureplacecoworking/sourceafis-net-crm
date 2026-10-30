@@ -149,10 +149,17 @@ internal sealed class ClientScreenForm : Form
         var desiredSize = height < 600 ? 25F : height < 800 ? 32F : 40F;
         if (titleSize != desiredSize)
         {
-            var old = title.Font;
-            title.Font = CentralTheme.Heading(desiredSize);
+            var next = CentralTheme.Heading(desiredSize);
+            // Control.Font keeps its existing instance when an equal font is assigned.
+            // Disposing that still-selected instance would break GDI+ text measurement.
+            if (title.Font.Equals(next)) next.Dispose();
+            else
+            {
+                var old = title.Font;
+                title.Font = next;
+                old.Dispose();
+            }
             titleSize = desiredSize;
-            old.Dispose();
         }
     }
 
