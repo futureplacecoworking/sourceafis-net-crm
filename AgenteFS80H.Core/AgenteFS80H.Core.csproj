@@ -9,5 +9,6 @@
     <ProjectReference Include="../SourceAFIS/SourceAFIS.csproj" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
     <InternalsVisibleTo Include="AgenteFS80H.Tests" />
+    <InternalsVisibleTo Include="AgenteFS80H.Desktop.Tests" />
   </ItemGroup>
 </Project>
