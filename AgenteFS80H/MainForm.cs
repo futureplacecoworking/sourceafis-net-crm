@@ -218,7 +218,7 @@ internal sealed class MainForm : Form
         scannerPath.Text = configuration.ScannerDllPath;
         pairingState.Text = configuration.IsPaired
             ? "Este computador está pareado. O cadastro e as permissões ficam na Central."
-            : "Gere um código na área Digitais da Central e informe-o abaixo.";
+            : "Gere um código em Automação e sensores › Leitor da recepção na Central e informe-o abaixo.";
         // An unreadable DPAPI store has no usable pairing, but the user must
         // still be able to explicitly remove it through the confirmation flow.
         clearButton.Enabled = !busy;
@@ -275,7 +275,7 @@ internal sealed class MainForm : Form
             return;
         }
         if (runtime.Configuration.IsPaired && MessageBox.Show(this,
-            "Trocar o pareamento remove as digitais salvas neste computador. Para bloquear o leitor anterior na Central, revogue-o também na área Digitais. Deseja continuar?",
+            "Trocar o pareamento remove as digitais salvas neste computador. Para bloquear o leitor anterior na Central, revogue-o também em Automação e sensores › Leitor da recepção. Deseja continuar?",
             "Trocar pareamento", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             return;
@@ -297,7 +297,7 @@ internal sealed class MainForm : Form
     private async Task ClearPairingAsync()
     {
         if (busy || MessageBox.Show(this,
-            "Remover o pareamento e todas as digitais deste computador? Esta limpeza local não revoga o leitor na Central; faça a revogação também na área Digitais.",
+            "Remover o pareamento e todas as digitais deste computador? Esta limpeza local não revoga o leitor na Central; faça a revogação também em Automação e sensores › Leitor da recepção.",
             "Limpar dados locais", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             return;

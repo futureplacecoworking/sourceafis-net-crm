@@ -96,7 +96,7 @@ public sealed class AgentRuntime : IDisposable
             if (localDataFailed) throw new LocalDataException();
             if (!Configuration.IsPaired)
             {
-                SetStatus(AgentStatus.Unconfigured, "Gere um código na área Digitais da Central para parear este computador.");
+                SetStatus(AgentStatus.Unconfigured, "Gere um código em Automação e sensores › Leitor da recepção na Central para parear este computador.");
                 return;
             }
             client ??= clientFactory(Configuration);
