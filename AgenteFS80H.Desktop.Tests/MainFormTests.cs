@@ -236,6 +236,32 @@ public class MainFormTests
 
     private static string Colors(Control root) => string.Join("|", UiFixture.Tree(root).Select(c => $"{c.ForeColor.ToArgb()}:{c.BackColor.ToArgb()}"));
 
+    [Test]
+    public void PairingValidationIsVisibleWithoutScrollingToTheBottom()
+    {
+        using var ui = new UiFixture(paired: false);
+        ui.Click("navigationSettings");
+        ui.Click("pairButton");
+        var message = ui.Find<Control>("actionMessage");
+        Assert.That(message.Text, Does.Contain("código"));
+        AssertInViewport(message, ui.Form);
+        Assert.That(ui.Store.Writes, Is.Zero);
+    }
+
+    [Test]
+    public void PrimaryActionCaptionsFitTheirPaintedTextArea()
+    {
+        using var ui = new UiFixture();
+        ui.Click("navigationSettings");
+        foreach (var name in new[] { "openCentralButton", "pairButton", "selectDllButton" })
+        {
+            var button = ui.Find<Button>(name);
+            using var graphics = button.CreateGraphics();
+            var text = graphics.MeasureString(button.Text, button.Font);
+            Assert.That(button.ClientSize.Width - button.Padding.Horizontal, Is.GreaterThanOrEqualTo((int)Math.Ceiling(text.Width)), $"A legenda de {name} deve aparecer inteira.");
+        }
+    }
+
     private static void AssertInViewport(Control control, Control viewport)
     {
         Assert.That(control.Visible, Is.True, $"{control.Name} precisa estar visível.");
