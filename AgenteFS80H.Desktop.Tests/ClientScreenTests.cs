@@ -128,6 +128,11 @@ public class ClientScreenTests
         Assert.That(client.WindowState, Is.EqualTo(FormWindowState.Maximized));
         Key(client, Keys.F11);
         Assert.That(client.FormBorderStyle, Is.EqualTo(FormBorderStyle.Sizable));
+        client.WindowState = FormWindowState.Minimized;
+        UiFixture.Pump();
+        ui.Click("clientScreenButton");
+        Assert.That(client.WindowState, Is.EqualTo(FormWindowState.Normal), "Reabrir precisa restaurar a janela minimizada existente.");
+        Assert.That(ClientWindows(), Has.Count.EqualTo(1));
         Key(client, Keys.Escape);
         Assert.That(client.IsDisposed, Is.True);
         Assert.That(ui.Form.Visible, Is.True);
