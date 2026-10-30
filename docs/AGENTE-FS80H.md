@@ -10,11 +10,21 @@ Use **Configurações** para conectar o computador à Central, selecionar a DLL 
 
 O visual usa a marca, cores e fontes da Central. As fontes acompanham o aplicativo e não são baixadas durante o uso. A interface mantém texto junto das cores e acompanha a escala do Windows.
 
+## Tela voltada ao cliente
+
+A janela principal é usada pela **recepcionista**. Clique em **Tela do cliente** nela ou no menu da bandeja para abrir a apresentação separada: marca animada, instrução grande e resultado, sem configurações, nomes ou dados internos. Não é necessário abrir outro programa ou parear o leitor novamente.
+
+Quando há outro monitor, a apresentação abre nele em tela cheia; com apenas um, abre no monitor atual. **F11** alterna tela cheia e janela, permitindo arrastá-la para o monitor desejado. **Esc** fecha só a apresentação; o agente e a tela da recepcionista continuam disponíveis. Ela pode ser reaberta pelo botão ou pela bandeja. Esta apresentação não bloqueia o uso do Windows.
+
+As orientações acompanham a captura real, inclusive retirar completamente e repetir o mesmo dedo. Quando a Central autoriza, a animação confirma a identificação e mostra **“Bom dia!”, “Boa tarde!” ou “Boa noite!”**, pelo horário de Brasília, e **“Seja bem-vindo ao Future Place!”**. A saudação usa manhã das 06:00 às 11:59, tarde das 12:00 às 17:59 e noite no restante. Como a fechadura ainda não está integrada, a pessoa deve aguardar a recepcionista para entrar. Cadastros concluídos, recusas e falhas têm mensagens próprias. Não há som nem vídeo baixado da internet.
+
+Uma falha, desconexão ou revogação remove imediatamente a apresentação de autorização anterior. Fechar a janela principal mantém a apresentação acompanhando as leituras; encerrar o agente fecha ambas. A atualização preserva o pareamento e as digitais já cadastradas.
+
 ## Baixar e instalar
 
 1. No GitHub deste fork, abra **Actions → Agente FS80H — Windows** e escolha uma execução concluída com sucesso da versão que será instalada.
-2. Em **Artifacts**, baixe `AgenteFS80H-win-x64`. O GitHub fornece um ZIP externo; extraia-o para obter `AgenteFS80H-win-x64.zip` e o checksum `.sha256`. Um rascunho de release revisado também pode fornecer esses arquivos diretamente.
-3. Extraia **todo** o `AgenteFS80H-win-x64.zip` para uma pasta. Devem aparecer `Install.ps1`, `Uninstall.ps1`, `LEIA-ME.md`, `LICENSE`, `build-info.json` e a pasta `app`. Não execute o instalador de dentro do ZIP.
+2. Em **Artifacts**, baixe **`AgenteFS80H-instalacao-Windows`** para instalar com uma única extração. A opção `AgenteFS80H-win-x64` continua disponível com o ZIP interno e seu checksum `.sha256`; nessa opção, extraia também o ZIP interno.
+3. Extraia **todo** o pacote de instalação para uma pasta. Devem aparecer `Install.ps1`, `Uninstall.ps1`, `LEIA-ME.md`, `LICENSE`, `build-info.json` e a pasta `app`. Não execute o instalador de dentro do ZIP.
 4. Nessa pasta, abra o PowerShell da sua conta Windows e execute:
 
    ```powershell

@@ -10,14 +10,6 @@ namespace AgenteFS80H.Desktop.Tests;
 [NonParallelizable]
 public class MainFormTests
 {
-    [OneTimeSetUp]
-    public void InitializeDesktop()
-    {
-        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-    }
-
     [Test]
     public void StartupShowsReadingAndDoesNotInventAConnectionFromSavedPairing()
     {

@@ -23,6 +23,7 @@ internal sealed partial class MainForm : Form
     private readonly CentralButton navigationReading = new("Leitura") { Name = "navigationReading", Navigation = true };
     private readonly CentralButton navigationSettings = new("Configurações") { Name = "navigationSettings", Navigation = true };
     private readonly CentralButton openCentralButton = new("Abrir Central", ButtonTone.Primary) { Name = "openCentralButton" };
+    private readonly CentralButton clientScreenButton = new("Tela do cliente") { Name = "clientScreenButton" };
     private readonly CentralButton setupReader = new("Configurar leitor", ButtonTone.Primary) { Name = "setupReader" };
     private readonly CheckBox startup = new() { Name = "startup" };
     private readonly Panel readingPage = Page("readingPage");
@@ -97,6 +98,7 @@ internal sealed partial class MainForm : Form
         navigationSettings.Click += (_, _) => ShowPage(true);
         setupReader.Click += (_, _) => ShowPage(true);
         openCentralButton.Click += (_, _) => OpenCentral();
+        clientScreenButton.Click += (_, _) => ShowClientScreen();
         FormClosing += (_, e) =>
         {
             if (!AllowClose && e.CloseReason == CloseReason.UserClosing)
@@ -133,16 +135,19 @@ internal sealed partial class MainForm : Form
 
     private Control BuildNavigation()
     {
-        var row = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(32, 16, 32, 12), Margin = Padding.Empty, ColumnCount = 2 };
+        var row = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(32, 16, 32, 12), Margin = Padding.Empty, ColumnCount = 3 };
         row.SuspendLayout();
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         var tabs = Buttons(navigationReading, navigationSettings);
         tabs.Dock = DockStyle.Fill;
         row.Controls.Add(tabs, 0, 0);
         openCentralButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         openCentralButton.Margin = Padding.Empty;
-        row.Controls.Add(openCentralButton, 1, 0);
+        clientScreenButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        row.Controls.Add(clientScreenButton, 1, 0);
+        row.Controls.Add(openCentralButton, 2, 0);
         return row;
     }
 
@@ -202,6 +207,9 @@ internal sealed partial class MainForm : Form
         Add(guide, steps);
         help.Controls.Add(guide);
         Add(stack, help);
+        var clientHint = Wrap("Tela do cliente abre uma apresentação separada no outro monitor, quando houver. F11 alterna a tela cheia; Esc fecha só a apresentação.");
+        clientHint.ForeColor = CentralTheme.Muted;
+        Add(stack, clientHint);
         var central = Wrap("Cadastre pessoas e configure os dias e horários na Central: Automação e sensores → Leitor da recepção.");
         central.ForeColor = CentralTheme.Muted;
         Add(stack, central);
@@ -368,6 +376,8 @@ internal sealed partial class MainForm : Form
     public void ShowSnapshot(AgentSnapshot snapshot)
     {
         if (exiting) return;
+        displayedSnapshot = snapshot;
+        if (clientScreen is { IsDisposed: false }) clientScreen.ShowSnapshot(snapshot);
         statusTitle.Text = snapshot.Status == AgentStatus.Ready
             ? snapshot.Message.StartsWith("Retire o dedo", StringComparison.Ordinal) ? "Retire o dedo do leitor"
                 : snapshot.Message.StartsWith("Digital cadastrada", StringComparison.Ordinal) ? "Digital cadastrada"
@@ -423,8 +433,9 @@ internal sealed partial class MainForm : Form
     public void SetExiting()
     {
         exiting = true;
+        CloseClientScreen();
         SetInputsEnabled(false);
-        foreach (var button in new[] { navigationReading, navigationSettings, openCentralButton, setupReader }) button.Enabled = false;
+        foreach (var button in new[] { navigationReading, navigationSettings, openCentralButton, clientScreenButton, setupReader }) button.Enabled = false;
         startup.Enabled = false;
         statusTitle.Text = "Encerrando leitor…";
         statusMessage.Text = "Aguardando o leitor e a Central encerrarem as operações.";
@@ -433,6 +444,7 @@ internal sealed partial class MainForm : Form
     protected override void Dispose(bool disposing)
     {
         var icon = disposing ? Icon : null;
+        if (disposing) CloseClientScreen();
         base.Dispose(disposing);
         if (disposing) { logo.Dispose(); readerImage.Dispose(); icon?.Dispose(); }
     }
