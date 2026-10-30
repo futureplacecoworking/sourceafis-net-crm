@@ -70,6 +70,7 @@ var
   LegacyCandidateWindow: HWND;
   LegacyCandidateProcessId: LongWord;
   LegacyHasVisibleForms: Boolean;
+  LegacyDiagnosticProcessId: LongWord;
 
 { Inno Setup 6.7's script engine and generated Setup process are 32-bit, even
   for x64 payloads. Its documented CreateCallback ABI uses LongWord. }
@@ -86,6 +87,8 @@ function NativeGetDlgItemText(Window: HWND; ItemId: Integer; Text: String; Maxim
 function NativeGetDlgItem(Window: HWND; ItemId: Integer): HWND;
   external 'GetDlgItem@user32.dll stdcall';
 function NativeIsWindowVisible(Window: HWND): Boolean;
+  external 'IsWindowVisible@user32.dll stdcall';
+function NativeWindowVisibleValue(Window: HWND): Integer;
   external 'IsWindowVisible@user32.dll stdcall';
 function NativeIsWindowEnabled(Window: HWND): Boolean;
   external 'IsWindowEnabled@user32.dll stdcall';
@@ -126,6 +129,7 @@ begin
   Service := Locator.ConnectServer('', 'root\CIMV2');
   Processes := Service.ExecQuery('SELECT ProcessId FROM Win32_Process WHERE Name = ''{#AppExe}'' AND ExecutablePath = ''' + WmiQuote(Executable) + '''');
   Result := Processes.Count > 0;
+  if Result then LegacyDiagnosticProcessId := Processes.ItemIndex(0).ProcessId;
 end;
 
 function KnownLegacyVersion(const Executable: String): Boolean;
@@ -168,22 +172,36 @@ end;
 
 function FindLegacyShutdownDialog(Window: HWND; Parameter: LongWord): Integer;
 var
-  Text: String;
-  Length: Integer;
+  Text, ClassName, Caption: String;
+  TextLength: Integer;
   ProcessId: LongWord;
   OkayButton: HWND;
 begin
   Result := 1;
+  NativeGetWindowThreadProcessId(Window, ProcessId);
+  if ProcessId = LegacyDiagnosticProcessId then
+  begin
+    ClassName := WindowClass(Window);
+    Caption := WindowCaption(Window);
+    Log('Legacy matcher window=' + IntToStr(Window) + ' pid=' + IntToStr(ProcessId) +
+      ' class=' + ClassName + ' captionLength=' + IntToStr(Length(Caption)) +
+      ' expectedCaption=' + IntToStr(Ord(Caption = 'Agente FS80H da Central')) +
+      ' visibleBool=' + IntToStr(Ord(NativeIsWindowVisible(Window))) +
+      ' visibleNative=' + IntToStr(NativeWindowVisibleValue(Window)));
+  end;
   if not NativeIsWindowVisible(Window) then Exit;
   if WindowClass(Window) <> '#32770' then Exit;
   if WindowCaption(Window) <> 'Agente FS80H da Central' then Exit;
   Text := StringOfChar(#0, 1024);
-  Length := NativeGetDlgItemText(Window, $FFFF, Text, 1024);
-  SetLength(Text, Length);
+  TextLength := NativeGetDlgItemText(Window, $FFFF, Text, 1024);
+  SetLength(Text, TextLength);
+  Log('Legacy matcher body length=' + IntToStr(TextLength));
   if Text <> 'Não foi possível iniciar o agente. Se os dados locais estiverem protegidos por outro usuário do Windows ou danificados, reinstale escolhendo explicitamente remover os dados e faça um novo pareamento. Nenhum dado foi apagado automaticamente.' then Exit;
   OkayButton := NativeGetDlgItem(Window, 1);
+  Log('Legacy matcher exact body matched; IDOK=' + IntToStr(OkayButton) + ' class=' + WindowClass(OkayButton) + ' enabled=' + IntToStr(Ord(NativeIsWindowEnabled(OkayButton))));
   if (OkayButton = 0) or (WindowClass(OkayButton) <> 'Button') or not NativeIsWindowEnabled(OkayButton) then Exit;
   NativeGetWindowThreadProcessId(Window, ProcessId);
+  Log('Legacy matcher process identity=' + IntToStr(Ord(IsInstalledProcess(ProcessId))));
   if not IsInstalledProcess(ProcessId) then Exit;
   LegacyCandidateWindow := Window;
   LegacyCandidateProcessId := ProcessId;
@@ -200,6 +218,7 @@ begin
     (Pos('WindowsForms', WindowClass(Window)) = 1) then
   begin
     LegacyHasVisibleForms := True;
+    Log('Legacy matcher blocked by visible WinForms class=' + WindowClass(Window));
     Result := 0;
   end;
 end;
@@ -229,6 +248,7 @@ function StopInstalledApplication: String;
 var
   Executable: String;
   ExitCode, Attempt: Integer;
+  VersionMS, VersionLS: Cardinal;
 begin
   Result := '';
   Executable := ExpandConstant('{app}\{#AppExe}');
@@ -242,6 +262,8 @@ begin
       Exit;
     end;
     Log('Shutdown helper completed with exit code ' + IntToStr(ExitCode));
+    if GetVersionNumbers(Executable, VersionMS, VersionLS) then
+      Log('Legacy matcher versionMS=' + IntToStr(VersionMS) + ' versionLS=' + IntToStr(VersionLS) + ' enabled=' + IntToStr(Ord(KnownLegacyVersion(Executable))));
     for Attempt := 1 to 100 do
     begin
       if not RunningInstalledApplication(Executable) then Exit;

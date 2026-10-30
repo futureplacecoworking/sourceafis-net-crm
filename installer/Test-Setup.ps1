@@ -95,6 +95,10 @@ function Save-ApplicationEvidence([Diagnostics.Process]$Application, [string]$La
         $texts = $candidate.FindAll([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Text)))
         $visibleText = @($texts | ForEach-Object { $_.Current.Name })
         $record = @{ title=$candidate.Current.Name; class=$candidate.Current.ClassName; enabled=$candidate.Current.IsEnabled; offscreen=$candidate.Current.IsOffscreen; processId=$candidate.Current.ProcessId; handle=$candidate.Current.NativeWindowHandle; text=$visibleText }
+        if ($candidate.Current.ClassName -eq '#32770') {
+            $controls = $candidate.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
+            $record.dialogControls = @($controls | ForEach-Object { @{ class=$_.Current.ClassName; automationId=$_.Current.AutomationId; handle=$_.Current.NativeWindowHandle; controlId=$(if($_.Current.NativeWindowHandle -ne 0){[CentralBiometricaSetupTest.Native]::GetDlgCtrlID([IntPtr]$_.Current.NativeWindowHandle)}else{0}); nameLength=$_.Current.Name.Length; enabled=$_.Current.IsEnabled } })
+        }
         $records += $record
         Write-Host ($record | ConvertTo-Json -Depth 4 -Compress)
         if (-not $candidate.Current.IsOffscreen -and $candidate.Current.BoundingRectangle.Width -gt 0 -and $candidate.Current.BoundingRectangle.Height -gt 0) {
@@ -291,6 +295,8 @@ namespace CentralBiometricaSetupTest {
         public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool PrintWindow(IntPtr window, IntPtr deviceContext, uint flags);
+        [DllImport("user32.dll")]
+        public static extern int GetDlgCtrlID(IntPtr window);
     }
 }
 '@
