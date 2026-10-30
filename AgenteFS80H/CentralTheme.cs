@@ -118,7 +118,7 @@ internal static class CentralTheme
     {
         try
         {
-            using var stream = Resource("Central.ico");
+            using var stream = Resource("Reader.ico") ?? Resource("Central.ico");
             if (stream is not null)
             {
                 using var icon = new Icon(stream);
@@ -127,6 +127,18 @@ internal static class CentralTheme
         }
         catch (Exception e) when (e is ArgumentException or ExternalException or IOException) { }
         return (Icon)SystemIcons.Application.Clone();
+    }
+
+    public static Image ReaderImage()
+    {
+        using var stream = Resource("Reader.png");
+        if (stream is not null)
+        {
+            using var image = Image.FromStream(stream);
+            return new Bitmap(image);
+        }
+        using var icon = AppIcon();
+        return icon.ToBitmap();
     }
 
     private static Stream? Resource(string name) => Assembly.GetExecutingAssembly().GetManifestResourceStream(ResourcePrefix + name);
@@ -348,75 +360,5 @@ internal sealed class CentralCard : Panel
         using var card = CentralTheme.Rounded(new RectangleF(1, 0, Width - 2, Height - 5 * scale), 12 * scale);
         using var surface = new SolidBrush(BackColor);
         graphics.FillPath(surface, card);
-    }
-}
-
-/// <summary>Decorative generic fingerprint; never displays or stores an actual captured fingerprint.</summary>
-internal sealed class FingerprintGlyph : Control
-{
-    private Color accent = CentralTheme.Primary;
-
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public Color Accent { get => accent; set { if (accent != value) { accent = value; Invalidate(); } } }
-
-    public FingerprintGlyph()
-    {
-        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
-            ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw |
-            ControlStyles.SupportsTransparentBackColor, true);
-        Size = new Size(100, 100);
-        BackColor = Color.Transparent;
-        AccessibleRole = AccessibleRole.Graphic;
-        AccessibleName = "Leitor de digital";
-        TabStop = false;
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        if (Width < 2 || Height < 2)
-            return;
-        base.OnPaint(e);
-        var graphics = e.Graphics;
-        graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        float scale = Math.Min(Width, Height) / 100F;
-        var state = graphics.Save();
-        try
-        {
-            graphics.TranslateTransform((Width - scale * 100) / 2, (Height - scale * 100) / 2);
-            graphics.ScaleTransform(scale, scale);
-            using var background = new SolidBrush(Color.FromArgb(18, accent));
-            graphics.FillEllipse(background, 1, 1, 98, 98);
-            using var pen = new Pen(accent, 2.7F) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-
-            using var outerLeft = new GraphicsPath();
-            outerLeft.AddBezier(19, 52, 16, 34, 30, 20, 48, 19);
-            outerLeft.AddBezier(48, 19, 63, 18, 77, 27, 81, 39);
-            graphics.DrawPath(pen, outerLeft);
-
-            using var outerRight = new GraphicsPath();
-            outerRight.AddBezier(82, 49, 82, 62, 79, 74, 74, 82);
-            graphics.DrawPath(pen, outerRight);
-
-            using var ridge = new GraphicsPath();
-            ridge.AddBezier(22, 68, 28, 59, 27, 52, 27, 46);
-            ridge.AddBezier(27, 46, 27, 33, 38, 27, 50, 27);
-            ridge.AddBezier(50, 27, 63, 27, 73, 36, 73, 48);
-            ridge.AddBezier(73, 48, 74, 62, 70, 75, 65, 84);
-            graphics.DrawPath(pen, ridge);
-
-            using var middle = new GraphicsPath();
-            middle.AddBezier(28, 80, 37, 67, 36, 57, 36, 47);
-            middle.AddBezier(36, 47, 36, 39, 42, 35, 50, 35);
-            middle.AddBezier(50, 35, 59, 35, 65, 41, 65, 49);
-            middle.AddBezier(65, 49, 65, 65, 62, 75, 55, 85);
-            graphics.DrawPath(pen, middle);
-
-            using var core = new GraphicsPath();
-            core.AddBezier(38, 85, 44, 75, 45, 62, 45, 49);
-            core.AddBezier(45, 49, 45, 42, 56, 42, 56, 49);
-            core.AddBezier(56, 49, 56, 64, 53, 75, 48, 82);
-            graphics.DrawPath(pen, core);
-        }
-        finally { graphics.Restore(state); }
     }
 }

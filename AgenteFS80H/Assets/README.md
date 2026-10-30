@@ -2,7 +2,9 @@
 
 - `Central.png`: cópia sem alteração de `marca/png/central-horizontal-branca-1000.png` da Central de Operações.
 - `Central.ico`: cópia sem alteração de `marca/icones/favicon.ico` da Central de Operações.
-- A marca pertence à Future Place Coworking. O F não foi redesenhado.
+- Os arquivos Central.png e Central.ico conservam a marca oficial da Future Place Coworking sem alteração.
+- `Reader.png`: símbolo de aplicativo escolhido por Luiz nesta conversa, opção **2 — Digital integrada** (30/10/2026), combinando a marca do coworking e sulcos de digital. Arte preparada a partir das referências oficiais e da proposta aprovada; usada na página Leitura.
+- `Reader.ico`: codificação do PNG aprovado em tamanhos padrão do Windows (16 a 256 px), para executável, atalho, janela e bandeja. O cabeçalho continua usando a marca oficial `Central.png`.
 - `Nunito.ttf`: instância estática de peso 700 de [Nunito, Google Fonts](https://github.com/google/fonts/tree/main/ofl/nunito), blob de origem `2ec1f4b0676c83ef33049db87b311171699e9192`. Licença: `OFL-Nunito.txt`.
 - `Raleway.ttf`: instância estática de peso 400 de [Raleway, Google Fonts](https://github.com/google/fonts/tree/main/ofl/raleway), blob de origem `d81d42f537c7dc1bbde81b54e4c52a92977a8fde`. Licença: `OFL-Raleway.txt`.
 

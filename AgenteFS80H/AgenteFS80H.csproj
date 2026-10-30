@@ -10,7 +10,7 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
-    <ApplicationIcon>Assets/Central.ico</ApplicationIcon>
+    <ApplicationIcon>Assets/Reader.ico</ApplicationIcon>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Futureplace.AgenteFS80H.Desktop</RootNamespace>

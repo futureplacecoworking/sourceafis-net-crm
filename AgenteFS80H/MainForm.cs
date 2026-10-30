@@ -28,9 +28,10 @@ internal sealed partial class MainForm : Form
     private readonly Panel readingPage = Page("readingPage");
     private readonly Panel settingsPage = Page("settingsPage");
     private readonly CentralCard setupGuide = new() { Name = "setupGuide", AutoSize = true, Dock = DockStyle.Top };
-    private readonly FingerprintGlyph fingerprint = new() { Size = new Size(144, 144), Margin = new Padding(0, 16, 28, 16) };
+    private readonly PictureBox fingerprint = new() { Size = new Size(144, 144), SizeMode = PictureBoxSizeMode.Zoom, Margin = new Padding(0, 16, 28, 16), AccessibleName = "Future Place Coworking — leitor de digital" };
     private readonly List<Label> wrappingLabels = [];
     private readonly Image logo = CentralTheme.Logo();
+    private readonly Image readerImage = CentralTheme.ReaderImage();
     private string? displayedCentralUrl;
     private bool busy;
     private bool changingStartup;
@@ -46,6 +47,7 @@ internal sealed partial class MainForm : Form
     {
         this.runtime = runtime;
         this.lifetime = lifetime;
+        fingerprint.Image = readerImage;
         SuspendLayout();
         Text = "Leitor da recepção — Central";
         Icon = CentralTheme.AppIcon();
@@ -380,7 +382,6 @@ internal sealed partial class MainForm : Form
         };
         statusTitle.ForeColor = accent;
         statusCaption.ForeColor = accent;
-        fingerprint.Accent = accent;
         statusMessage.Text = snapshot.Message;
         statusCaption.Text = snapshot.Status switch
         {
@@ -433,6 +434,6 @@ internal sealed partial class MainForm : Form
     {
         var icon = disposing ? Icon : null;
         base.Dispose(disposing);
-        if (disposing) { logo.Dispose(); icon?.Dispose(); }
+        if (disposing) { logo.Dispose(); readerImage.Dispose(); icon?.Dispose(); }
     }
 }

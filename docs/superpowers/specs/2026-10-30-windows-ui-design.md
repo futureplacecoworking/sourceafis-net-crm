@@ -12,4 +12,6 @@ Usar os tokens da Central: #001a30 no cabeçalho; #003a6c nas ações; fundo #f4
 
 Não alterar captura, biometria, protocolo, autorização, dados reais, DLL do fabricante ou o módulo Digitais do CRM. Não registrar identidades ou imagens localmente para decorar a tela. A atualização conserva os caminhos e os dados existentes.
 
+Luiz escolheu a opção2 **Digital integrada** para o símbolo do app: marca FuturePlace com sulcos de digital. Aplicar no executável, janela, bandeja e destaque da página Leitura; conservar a assinatura oficial da Central no cabeçalho.
+
 Validar no CI Windows: navegação, foco/rascunho, instruções, troca de autorização por bloqueio, encerramento e tamanhos. Publicar capturas nativas dos estados sintéticos e novo ZIP autocontido. O uso do sensor físico segue a validação feita no PC da recepção.
