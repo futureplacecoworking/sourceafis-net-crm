@@ -26,7 +26,6 @@ MinVersion=10.0.17763
 WizardStyle=modern
 SetupIconFile=..\AgenteFS80H\Assets\Reader.ico
 WizardSmallImageFile=..\artifacts\setup-brand.bmp
-WizardSmallImageStretch=yes
 DisableWelcomePage=yes
 DisableDirPage=yes
 DisableProgramGroupPage=yes
