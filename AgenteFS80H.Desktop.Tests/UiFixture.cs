@@ -13,7 +13,7 @@ internal sealed class UiFixture : IDisposable
     public readonly AgentRuntime Runtime;
     public readonly MainForm Form;
 
-    public UiFixture(bool paired = true, bool scanner = true)
+    public UiFixture(bool paired = true, bool scanner = true, AppUpdateClient? updates = null)
     {
         Store = new MemoryStore(new AgentState
         {
@@ -32,7 +32,7 @@ internal sealed class UiFixture : IDisposable
             _ => throw new AssertionException("A UI de teste não pode carregar um leitor físico."),
             new UnusedRecognizer(), TimeProvider.System);
         TestContext.Progress.WriteLine($"UI {TestContext.CurrentContext.Test.Name}: criar janela");
-        Form = new MainForm(Runtime, CancellationToken.None);
+        Form = new MainForm(Runtime, CancellationToken.None, updates);
         TestContext.Progress.WriteLine($"UI {TestContext.CurrentContext.Test.Name}: mostrar janela");
         Form.Show();
         Pump();

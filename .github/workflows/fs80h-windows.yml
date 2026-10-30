@@ -58,21 +58,12 @@ jobs:
       - name: Verificar sintaxe dos scripts de instalação
         shell: pwsh
         run: |
-          foreach ($script in @('installer/Install.ps1', 'installer/Uninstall.ps1')) {
+          foreach ($script in (Get-ChildItem installer/*.ps1 | Select-Object -ExpandProperty FullName)) {
             $tokens = $null
             $parseErrors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $script), [ref]$tokens, [ref]$parseErrors) | Out-Null
-            if ($parseErrors.Count -ne 0) { throw ($parseErrors | Out-String) }
+            [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -ne 0) { throw ($script + ': ' + ($parseErrors | Format-List | Out-String)) }
           }
-      - name: Testar biblioteca SourceAFIS
-        run: dotnet test SourceAFIS.Tests/SourceAFIS.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/sourceafis
-      - name: Testar protocolo, proteção e fluxo do agente
-        run: dotnet test AgenteFS80H.Tests/AgenteFS80H.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/agente
-      - name: Testar a interface Windows e gerar prévias nativas
-        timeout-minutes: 5
-        env:
-          FS80H_UI_OUTPUT: ${{ github.workspace }}/artifacts/ui
-        run: dotnet test AgenteFS80H.Desktop.Tests/AgenteFS80H.Desktop.Tests.csproj --configuration Release --runtime win-x64 -p:SelfContained=false --logger trx --blame-hang --blame-hang-timeout 45s --blame-hang-dump-type none --results-directory artifacts/test-results/desktop
       - name: Publicar Windows x64 autocontido
         run: dotnet publish AgenteFS80H/AgenteFS80H.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/bundle/app /p:PublishSingleFile=false /p:PublishTrimmed=false /p:PublishReadyToRun=false
       - name: Preparar pacote instalável
@@ -129,6 +120,99 @@ jobs:
           & (Join-Path $installed 'Uninstall.ps1') -RemoveData
           if (Test-Path -LiteralPath $data) { throw 'Remoção explícita dos dados foi ignorada.' }
           if (Test-Path -LiteralPath $uninstallKey) { throw 'Desinstalação manteve o registro de aplicativo.' }
+      - name: Preparar instalação antiga real para testar migração
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git fetch --no-tags --depth=1 origin 9d758cfc7dac302ece29c42bf0feef3c712e6d42
+          if ($LASTEXITCODE -ne 0) { throw 'Não foi possível obter a versão 1.2.0 para testar a migração.' }
+          git worktree add --detach artifacts/legacy-source FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Não foi possível preparar o código antigo.' }
+          dotnet publish artifacts/legacy-source/AgenteFS80H/AgenteFS80H.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/legacy-bundle/app /p:PublishSingleFile=false /p:PublishTrimmed=false /p:PublishReadyToRun=false
+          if ($LASTEXITCODE -ne 0) { throw 'Não foi possível gerar a versão antiga real.' }
+          Copy-Item artifacts/legacy-source/installer/Install.ps1, artifacts/legacy-source/installer/Uninstall.ps1, artifacts/legacy-source/LICENSE -Destination artifacts/legacy-bundle
+          Copy-Item artifacts/legacy-source/docs/AGENTE-FS80H.md -Destination artifacts/legacy-bundle/LEIA-ME.md
+      - name: Compilar instalador gráfico da Central Biométrica
+        shell: pwsh
+        run: ./installer/Build-Setup.ps1
+      - name: Verificar instalador EXE, atualização e desinstalação reais
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content AgenteFS80H/AgenteFS80H.csproj -Raw
+          ./installer/Test-Setup.ps1 -SetupPath "$PWD/artifacts/setup/Central-Biometrica-Setup.exe" -BundlePath "$PWD/artifacts/bundle" -LegacyBundlePath "$PWD/artifacts/legacy-bundle" -ExpectedVersion ([string]$project.Project.PropertyGroup.Version)
+      - name: Testar biblioteca SourceAFIS
+        run: dotnet test SourceAFIS.Tests/SourceAFIS.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/sourceafis
+      - name: Testar protocolo, proteção e fluxo do agente
+        run: dotnet test AgenteFS80H.Tests/AgenteFS80H.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/agente
+      - name: Testar a interface Windows e gerar prévias nativas
+        timeout-minutes: 5
+        env:
+          FS80H_UI_OUTPUT: ${{ github.workspace }}/artifacts/ui
+        run: dotnet test AgenteFS80H.Desktop.Tests/AgenteFS80H.Desktop.Tests.csproj --configuration Release --runtime win-x64 -p:SelfContained=false --logger trx --blame-hang --blame-hang-timeout 45s --blame-hang-dump-type none --results-directory artifacts/test-results/desktop
+      - name: Disponibilizar instalador EXE e manifesto de atualização
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-Biometrica-Windows
+          path: artifacts/setup/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Disponibilizar prévias e evidências do instalador
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-Biometrica-setup-preview
+          path: artifacts/setup-tests/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Transporte do instalador 1
+        if: success() && hashFiles('artifacts/setup-parts/part-01/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-Biometrica-transporte-01
+          path: artifacts/setup-parts/part-01/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Transporte do instalador 2
+        if: success() && hashFiles('artifacts/setup-parts/part-02/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-Biometrica-transporte-02
+          path: artifacts/setup-parts/part-02/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Transporte do instalador 3
+        if: success() && hashFiles('artifacts/setup-parts/part-03/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-Biometrica-transporte-03
+          path: artifacts/setup-parts/part-03/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Transporte do instalador 4
+        if: success() && hashFiles('artifacts/setup-parts/part-04/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-Biometrica-transporte-04
+          path: artifacts/setup-parts/part-04/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Transporte do instalador 5
+        if: success() && hashFiles('artifacts/setup-parts/part-05/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-Biometrica-transporte-05
+          path: artifacts/setup-parts/part-05/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Transporte do instalador 6
+        if: success() && hashFiles('artifacts/setup-parts/part-06/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: Central-Biometrica-transporte-06
+          path: artifacts/setup-parts/part-06/
+          if-no-files-found: error
+          retention-days: 7
       - name: Disponibilizar ZIP e checksum
         uses: actions/upload-artifact@v4
         with:
@@ -196,3 +280,32 @@ jobs:
           '@ | Set-Content -LiteralPath release-notes.md -Encoding utf8
           gh release create $env:RELEASE_TAG package/AgenteFS80H-win-x64.zip package/AgenteFS80H-win-x64.zip.sha256 --draft --target $env:RELEASE_COMMIT --title "Agente FS80H $env:RELEASE_TAG" --notes-file release-notes.md
           if ($LASTEXITCODE -ne 0) { throw 'Não foi possível criar o rascunho de release.' }
+
+  publish-biometrica:
+    name: Publicar nova versão da Central Biométrica
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Central-Biometrica-Windows
+          path: package
+      - name: Publicar EXE, checksum e manifesto oficial
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content package/update.json -Raw | ConvertFrom-Json
+          $version = [string]$manifest.version
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Versão de publicação inválida.' }
+          $tag = 'central-biometrica-v' + $version
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Esta versão já foi publicada. Incremente Version no projeto para publicar uma atualização.' }
+          gh release create $tag package/Central-Biometrica-Setup.exe package/Central-Biometrica-Setup.exe.sha256 package/update.json --target '${{ github.sha }}' --latest --title "Central Biométrica $version" --notes-file docs/ALTERACOES-CENTRAL-BIOMETRICA.md
+          if ($LASTEXITCODE -ne 0) { throw 'Falha ao publicar a atualização oficial.' }

@@ -44,13 +44,14 @@ internal sealed partial class MainForm : Form
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Task PendingOperation { get; private set; } = Task.CompletedTask;
 
-    public MainForm(AgentRuntime runtime, CancellationToken lifetime)
+    public MainForm(AgentRuntime runtime, CancellationToken lifetime, AppUpdateClient? updates = null)
     {
         this.runtime = runtime;
         this.lifetime = lifetime;
+        appUpdates = updates ?? new AppUpdateClient();
         fingerprint.Image = readerImage;
         SuspendLayout();
-        Text = "Leitor da recepção — Central";
+        Text = AppIdentity.Name;
         Icon = CentralTheme.AppIcon();
         Font = CentralTheme.Body(10.5F);
         ForeColor = CentralTheme.Text;
@@ -61,11 +62,12 @@ internal sealed partial class MainForm : Form
         MinimumSize = new Size(860, 680);
         ClientSize = new Size(1040, 760);
 
-        var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Margin = Padding.Empty, Padding = Padding.Empty };
+        var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Margin = Padding.Empty, Padding = Padding.Empty };
         shell.SuspendLayout();
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
+        shell.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         shell.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
@@ -78,18 +80,20 @@ internal sealed partial class MainForm : Form
         actionMessage.Visible = false;
         actionMessage.TextChanged += (_, _) => actionMessage.Visible = !string.IsNullOrEmpty(actionMessage.Text);
         shell.Controls.Add(actionMessage, 0, 2);
+        shell.Controls.Add(BuildUpdateBanner(), 0, 3);
         var pages = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(28, 0, 28, 0) };
         pages.SuspendLayout();
         pages.Controls.Add(settingsPage);
         pages.Controls.Add(readingPage);
-        shell.Controls.Add(pages, 0, 3);
-        var footer = TextLabel("Fechar a janela mantém o leitor funcionando na bandeja do Windows. Esta etapa não aciona fechadura.", 10);
+        shell.Controls.Add(pages, 0, 4);
+        var footer = TextLabel($"{AppIdentity.Name} · Versão {AppIdentity.Version}\nFechar a janela mantém o leitor na bandeja do Windows. Esta etapa não aciona fechadura.", 10);
+        footer.Name = "versionLabel";
         footer.Dock = DockStyle.Fill;
         footer.AutoSize = false;
         footer.TextAlign = ContentAlignment.MiddleLeft;
         footer.Padding = new Padding(32, 8, 32, 8);
         footer.ForeColor = CentralTheme.Muted;
-        shell.Controls.Add(footer, 0, 4);
+        shell.Controls.Add(footer, 0, 5);
         Controls.Add(shell);
 
         BuildReadingPage();
@@ -124,7 +128,7 @@ internal sealed partial class MainForm : Form
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
         header.Controls.Add(new PictureBox { Image = logo, SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(208, 52), Anchor = AnchorStyles.Left, AccessibleName = "Central de Operações — Future Place" }, 0, 0);
-        var title = TextLabel("LEITOR DA RECEPÇÃO  /  FS80H", 10, true);
+        var title = TextLabel("CENTRAL BIOMÉTRICA  /  FS80H", 10, true);
         title.ForeColor = Color.White;
         title.AutoSize = false;
         title.Dock = DockStyle.Fill;
@@ -224,6 +228,15 @@ internal sealed partial class MainForm : Form
         intro.ForeColor = CentralTheme.Muted;
         intro.Margin = new Padding(0, 0, 0, 20);
         Add(stack, intro);
+        Add(stack, BuildDiagnosticsCard());
+
+        var updates = Stack();
+        Add(updates, Wrap($"Central Biométrica · Versão {AppIdentity.Version}", 16, true));
+        Add(updates, Wrap("As novas versões aparecem neste aplicativo. A atualização preserva seu pareamento e suas digitais."));
+        var checkUpdates = new CentralButton("Verificar atualizações") { Name = "checkUpdatesButton" };
+        checkUpdates.Click += async (_, _) => await VerifyUpdatesNowAsync();
+        Add(updates, Buttons(checkUpdates));
+        Add(stack, Card(updates));
 
         var connection = Stack();
         Add(connection, Wrap("1. Conectar à Central", 16, true));
@@ -371,12 +384,14 @@ internal sealed partial class MainForm : Form
         try { startup.Checked = StartupRegistration.IsEnabled(); }
         catch { startupAvailable = false; startup.Enabled = false; }
         finally { changingStartup = false; }
+        ReloadDiagnosticsConfiguration();
     }
 
     public void ShowSnapshot(AgentSnapshot snapshot)
     {
         if (exiting) return;
         displayedSnapshot = snapshot;
+        UpdateDiagnostics(snapshot);
         if (clientScreen is { IsDisposed: false }) clientScreen.ShowSnapshot(snapshot);
         statusTitle.Text = snapshot.Status == AgentStatus.Ready
             ? snapshot.Message.StartsWith("Retire o dedo", StringComparison.Ordinal) ? "Retire o dedo do leitor"
@@ -433,6 +448,7 @@ internal sealed partial class MainForm : Form
     public void SetExiting()
     {
         exiting = true;
+        StopUpdateChecks();
         CloseClientScreen();
         SetInputsEnabled(false);
         foreach (var button in new[] { navigationReading, navigationSettings, openCentralButton, clientScreenButton, setupReader }) button.Enabled = false;
@@ -444,7 +460,7 @@ internal sealed partial class MainForm : Form
     protected override void Dispose(bool disposing)
     {
         var icon = disposing ? Icon : null;
-        if (disposing) CloseClientScreen();
+        if (disposing) { StopUpdateChecks(); CloseClientScreen(); }
         base.Dispose(disposing);
         if (disposing) { logo.Dispose(); readerImage.Dispose(); icon?.Dispose(); }
     }
