@@ -71,7 +71,9 @@ var
   LegacyCandidateProcessId: LongWord;
   LegacyHasVisibleForms: Boolean;
 
-function NativeEnumWindows(Callback: NativeInt; Parameter: NativeInt): Boolean;
+{ Inno Setup 6.7's script engine and generated Setup process are 32-bit, even
+  for x64 payloads. Its documented CreateCallback ABI uses LongWord. }
+function NativeEnumWindows(Callback: LongWord; Parameter: LongWord): Boolean;
   external 'EnumWindows@user32.dll stdcall';
 function NativeGetWindowThreadProcessId(Window: HWND; var ProcessId: LongWord): LongWord;
   external 'GetWindowThreadProcessId@user32.dll stdcall';
@@ -87,8 +89,6 @@ function NativeIsWindowVisible(Window: HWND): Boolean;
   external 'IsWindowVisible@user32.dll stdcall';
 function NativeIsWindowEnabled(Window: HWND): Boolean;
   external 'IsWindowEnabled@user32.dll stdcall';
-function NativePostMessage(Window: HWND; Message: Cardinal; WParam, LParam: NativeInt): Boolean;
-  external 'PostMessageW@user32.dll stdcall';
 
 procedure InitializeStartupChoice;
 var
@@ -166,7 +166,7 @@ begin
   Result := Processes.Count = 1;
 end;
 
-function FindLegacyShutdownDialog(Window: HWND; Parameter: NativeInt): Integer;
+function FindLegacyShutdownDialog(Window: HWND; Parameter: LongWord): Integer;
 var
   Text: String;
   Length: Integer;
@@ -190,7 +190,7 @@ begin
   Result := 0;
 end;
 
-function FindLegacyOperationalWindow(Window: HWND; Parameter: NativeInt): Integer;
+function FindLegacyOperationalWindow(Window: HWND; Parameter: LongWord): Integer;
 var
   ProcessId: LongWord;
 begin
@@ -221,7 +221,7 @@ begin
   NativeEnumWindows(CreateCallback(@FindLegacyOperationalWindow), 0);
   if LegacyHasVisibleForms then Exit;
   OkayButton := NativeGetDlgItem(LegacyCandidateWindow, 1);
-  if NativePostMessage(LegacyCandidateWindow, $0111, 1, NativeInt(OkayButton)) then
+  if PostMessage(LegacyCandidateWindow, $0111, 1, OkayButton) then
     Log('Acknowledged the known legacy shutdown error for installed process ' + IntToStr(LegacyCandidateProcessId));
 end;
 
