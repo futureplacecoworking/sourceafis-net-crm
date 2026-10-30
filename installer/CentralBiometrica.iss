@@ -170,6 +170,31 @@ begin
   Result := Processes.Count = 1;
 end;
 
+function LegacyConfirmationButton(Window: HWND): HWND;
+var
+  ControlId: Integer;
+  Candidate: HWND;
+begin
+  Result := 0;
+  { Windows MessageBox may expose its only OK button as either IDOK or
+    IDCANCEL. Require the displayed action, and refuse ambiguous controls. }
+  for ControlId := 1 to 2 do
+  begin
+    Candidate := NativeGetDlgItem(Window, ControlId);
+    if (Candidate <> 0) and (WindowClass(Candidate) = 'Button') and
+      (WindowCaption(Candidate) = 'OK') and NativeIsWindowEnabled(Candidate) and
+      NativeIsWindowVisible(Candidate) then
+    begin
+      if Result <> 0 then
+      begin
+        Result := 0;
+        Exit;
+      end;
+      Result := Candidate;
+    end;
+  end;
+end;
+
 function FindLegacyShutdownDialog(Window: HWND; Parameter: LongWord): Integer;
 var
   Text, ClassName, Caption: String;
@@ -197,9 +222,9 @@ begin
   SetLength(Text, TextLength);
   Log('Legacy matcher body length=' + IntToStr(TextLength));
   if Text <> 'Não foi possível iniciar o agente. Se os dados locais estiverem protegidos por outro usuário do Windows ou danificados, reinstale escolhendo explicitamente remover os dados e faça um novo pareamento. Nenhum dado foi apagado automaticamente.' then Exit;
-  OkayButton := NativeGetDlgItem(Window, 1);
-  Log('Legacy matcher exact body matched; IDOK=' + IntToStr(OkayButton) + ' class=' + WindowClass(OkayButton) + ' enabled=' + IntToStr(Ord(NativeIsWindowEnabled(OkayButton))));
-  if (OkayButton = 0) or (WindowClass(OkayButton) <> 'Button') or not NativeIsWindowEnabled(OkayButton) then Exit;
+  OkayButton := LegacyConfirmationButton(Window);
+  Log('Legacy matcher exact body matched; confirmation button=' + IntToStr(OkayButton));
+  if OkayButton = 0 then Exit;
   NativeGetWindowThreadProcessId(Window, ProcessId);
   Log('Legacy matcher process identity=' + IntToStr(Ord(IsInstalledProcess(ProcessId))));
   if not IsInstalledProcess(ProcessId) then Exit;
@@ -239,8 +264,9 @@ begin
   LegacyHasVisibleForms := False;
   NativeEnumWindows(CreateCallback(@FindLegacyOperationalWindow), 0);
   if LegacyHasVisibleForms then Exit;
-  OkayButton := NativeGetDlgItem(LegacyCandidateWindow, 1);
-  if PostMessage(LegacyCandidateWindow, $0111, 1, OkayButton) then
+  OkayButton := LegacyConfirmationButton(LegacyCandidateWindow);
+  if OkayButton = 0 then Exit;
+  if PostMessage(OkayButton, $00F5, 0, 0) then
     Log('Acknowledged the known legacy shutdown error for installed process ' + IntToStr(LegacyCandidateProcessId));
 end;
 
