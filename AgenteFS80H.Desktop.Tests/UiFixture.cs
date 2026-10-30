@@ -31,9 +31,12 @@ internal sealed class UiFixture : IDisposable
             _ => throw new AssertionException("A UI de teste não pode iniciar comunicação com a Central."),
             _ => throw new AssertionException("A UI de teste não pode carregar um leitor físico."),
             new UnusedRecognizer(), TimeProvider.System);
+        TestContext.Progress.WriteLine($"UI {TestContext.CurrentContext.Test.Name}: criar janela");
         Form = new MainForm(Runtime, CancellationToken.None);
+        TestContext.Progress.WriteLine($"UI {TestContext.CurrentContext.Test.Name}: mostrar janela");
         Form.Show();
         Pump();
+        TestContext.Progress.WriteLine($"UI {TestContext.CurrentContext.Test.Name}: janela pronta");
     }
 
     public T Find<T>(string name) where T : Control

@@ -146,6 +146,16 @@ public class MainFormTests
         Assert.That(ui.Find<TextBox>("scannerPath").ReadOnly, Is.True);
     }
 
+    [TestCase("Digital cadastrada na Central. Configure a autorização de acesso.", "Digital cadastrada")]
+    [TestCase("Cadastro confirmado. Retire o dedo do leitor.", "Cadastro confirmado")]
+    public void EnrollmentCompletionDoesNotAskForAnotherReading(string message, string title)
+    {
+        using var ui = new UiFixture();
+        ui.Snapshot(AgentStatus.Ready, message);
+        Assert.That(ui.Find<Control>("readingTitle").Text, Is.EqualTo(title));
+        Assert.That(ui.Find<Control>("readingInstruction").Text, Is.EqualTo(message));
+    }
+
     [Test]
     public void ClosingTheWindowHidesItWithoutErasingLocalState()
     {
