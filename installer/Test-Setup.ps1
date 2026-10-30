@@ -43,7 +43,7 @@ function Find-Button($Window, [string]$Name) {
 function Find-Wizard([Diagnostics.Process]$Loader, [string]$ButtonName = '') {
     # Inno's SetupLdr owns a hidden STATIC window; the real wizard belongs to its setup.tmp child.
     # Match only top-level windows from the loader's process tree, never an unrelated Setup window.
-    $relatedProcessIds = New-Object 'Collections.Generic.HashSet[int]'
+    $relatedProcessIds = New-Object 'System.Collections.Generic.HashSet[int]'
     [void]$relatedProcessIds.Add($Loader.Id)
     $processes = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId)
     do {

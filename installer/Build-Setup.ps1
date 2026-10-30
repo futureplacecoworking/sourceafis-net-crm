@@ -52,4 +52,4 @@ try {
         $index++
     }
 } finally { $inputStream.Dispose() }
-Write-Host "Central Biométrica $appVersion: EXE e manifesto gerados, SHA256 $hash"
+Write-Host "Central Biométrica ${appVersion}: EXE e manifesto gerados, SHA256 $hash"
