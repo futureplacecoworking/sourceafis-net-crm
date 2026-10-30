@@ -6,7 +6,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly MainForm form;
     private readonly NotifyIcon tray;
     private readonly ContextMenuStrip menu;
-    private readonly Icon normalIcon = (Icon)SystemIcons.Application.Clone();
+    private readonly Icon normalIcon = CentralTheme.AppIcon();
     private readonly Icon warningIcon = (Icon)SystemIcons.Warning.Clone();
     private readonly CancellationTokenSource lifetime = new();
     private readonly RegisteredWaitHandle stopWait;
@@ -21,7 +21,8 @@ internal sealed class TrayContext : ApplicationContext
         form = new MainForm(runtime, lifetime.Token);
         _ = form.Handle;
         menu = new ContextMenuStrip();
-        menu.Items.Add("Abrir configurações", null, (_, _) => ShowForm());
+        menu.Items.Add("Abrir leitor", null, (_, _) => ShowForm());
+        menu.Items.Add("Configurações", null, (_, _) => { form.ShowSettings(); ShowForm(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Encerrar agente", null, async (_, _) => await RequestExitAsync());
         tray = new NotifyIcon

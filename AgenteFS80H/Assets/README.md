@@ -12,4 +12,8 @@ Todas as fontes são carregadas da memória do próprio aplicativo; o computador
 
 SHA-256 de `Nunito.ttf`: `52343f517f5c7bf2bdbe2696339b18ba4ad3fb3790c8ad7b015ad47a68a80e3c`.
 
-SHA-256 de `Raleway.ttf`: `8b74ba52a455fbff7e90f0697ee6019a81032700e5809e3d0d69b097d5054d55`.
+SHA-256 de `Raleway.ttf`: `2d6a35c0d5c584600175db82444a775ee67880b8912065412cec428b7b023908`.
+
+`Nunito-Regular.ttf`: instância complementar de peso 400 da mesma fonte de origem; SHA-256 `60154ed2dbb2282d1b3da60f91ed2b4df6b237bbc76fd70d52ac480f1132391b`.
+
+`Raleway-Bold.ttf`: instância complementar de peso 700 da mesma fonte de origem; SHA-256 `31c2667b357e08106d92f5f70862a5a8e928d46995c8c1236fa579219b689960`.

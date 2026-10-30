@@ -94,9 +94,30 @@ public class MainFormTests
         Assert.That(ui.Find<Control>("readingInstruction").Visible, Is.True);
         Assert.That(ui.Find<Control>("readingInstruction").Text, Is.EqualTo(message));
         if (status == AgentStatus.Ready)
-            Assert.That(ui.Find<Control>("readingTitle").Text, Is.EqualTo("Coloque o dedo no leitor"));
+            Assert.That(ui.Find<Control>("readingTitle").Text, Is.EqualTo("Retire o dedo do leitor"));
         if (status == AgentStatus.Authorized)
             Assert.That(ui.Find<Control>("readingTitle").Text, Is.EqualTo("Autorizado pela Central"));
+    }
+
+    [Test]
+    public void ReadyForANewReadingAsksThePersonToPlaceTheFinger()
+    {
+        using var ui = new UiFixture();
+        const string message = "Coloque o dedo cadastrado no leitor. A decisão depende da Central conectada.";
+        ui.Snapshot(AgentStatus.Ready, message);
+        Assert.That(ui.Find<Control>("readingTitle").Text, Is.EqualTo("Coloque o dedo no leitor"));
+        Assert.That(ui.Find<Control>("readingInstruction").Text, Is.EqualTo(message));
+    }
+
+    [Test]
+    public void ReadyWaitingForFingerLiftNeverAsksThePersonToPlaceTheFinger()
+    {
+        using var ui = new UiFixture();
+        const string message = "Retire o dedo do leitor antes de começar uma nova leitura.";
+        ui.Snapshot(AgentStatus.Ready, message);
+        Assert.That(ui.Find<Control>("readingTitle").Text, Is.EqualTo("Retire o dedo do leitor"));
+        Assert.That(ui.Find<Control>("readingTitle").Text, Does.Not.Contain("Coloque"));
+        Assert.That(ui.Find<Control>("readingInstruction").Text, Is.EqualTo(message));
     }
 
     [TestCase(AgentStatus.Offline, "Sem conexão. Acesso bloqueado.")]
