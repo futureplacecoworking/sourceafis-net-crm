@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory = $true)][string]$SetupPath,
     [Parameter(Mandatory = $true)][string]$BundlePath,
     [Parameter(Mandatory = $true)][string]$ExpectedVersion,
+    [string]$LegacyBundlePath = (Join-Path $PSScriptRoot '../artifacts/legacy-bundle'),
     [string]$OutputDirectory = 'artifacts/setup-tests'
 )
 
@@ -11,6 +12,11 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $SetupPath = (Resolve-Path -LiteralPath $SetupPath).Path
 $BundlePath = (Resolve-Path -LiteralPath $BundlePath).Path
+$LegacyBundlePath = (Resolve-Path -LiteralPath $LegacyBundlePath).Path
+$legacyBinary = Join-Path $LegacyBundlePath 'app\AgenteFS80H.exe'
+if (([Diagnostics.FileVersionInfo]::GetVersionInfo($legacyBinary).ProductVersion -split '\+')[0] -ne '1.2.0') {
+    throw 'The migration fixture must contain the actual published 1.2.0 binary.'
+}
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $installed = Join-Path $env:LOCALAPPDATA 'Programs\Futureplace\AgenteFS80H'
@@ -242,7 +248,7 @@ function Start-Background {
     return $process
 }
 
-function Invoke-Uninstall([string]$Label) {
+function Invoke-Uninstall([string]$Label, [switch]$PreservePreexistingDirectories) {
     $uninstaller = Join-Path $installed 'unins000.exe'
     Assert-True (Test-Path -LiteralPath $uninstaller) 'The native uninstaller is missing.'
     $log = Join-Path $OutputDirectory ($Label + '.log')
@@ -250,8 +256,22 @@ function Invoke-Uninstall([string]$Label) {
     Assert-True ($process.WaitForExit(60000)) 'Native uninstall did not finish.'
     Assert-True ($process.ExitCode -eq 0) "Native uninstall failed: $($process.ExitCode)"
     $deadline = [DateTime]::UtcNow.AddSeconds(10)
-    while ((Test-Path -LiteralPath $installed) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
-    Assert-True (-not (Test-Path -LiteralPath $installed)) 'Native uninstall did not remove installed application files.'
+    if ($PreservePreexistingDirectories) {
+        # Inno intentionally preserves directories that already existed in the PS installation.
+        # No application file is allowed to remain; only that pre-existing empty directory tree.
+        do {
+            $remainingFiles = @(if (Test-Path -LiteralPath $installed) { Get-ChildItem -LiteralPath $installed -Recurse -Force -File })
+            if ($remainingFiles.Count -eq 0) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $deadline)
+        Assert-True ($remainingFiles.Count -eq 0) ('Migrated uninstall left application files: ' + (($remainingFiles | ForEach-Object FullName) -join ', '))
+        $remainingDirectories = @(if (Test-Path -LiteralPath $installed) { Get-ChildItem -LiteralPath $installed -Recurse -Force -Directory })
+        Write-Host "Migrated uninstall preserved $($remainingDirectories.Count) pre-existing empty subdirectories; zero application files remain."
+    } else {
+        while ((Test-Path -LiteralPath $installed) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
+        Assert-True (-not (Test-Path -LiteralPath $installed)) 'Native uninstall did not remove installed application files.'
+    }
+    Assert-True (-not (Test-Path -LiteralPath $executable)) 'Native uninstall left the application executable.'
     Assert-True (-not (Test-Path -LiteralPath $uninstallKey)) 'Native uninstall left its application registration.'
     Assert-True (-not (Test-Path -LiteralPath $shortcut)) 'Native uninstall left its Start menu shortcut.'
     Assert-True (-not (Test-Path -LiteralPath $desktopShortcut)) 'Native uninstall left its Desktop shortcut.'
@@ -336,14 +356,16 @@ $agent = Start-Background
 Invoke-Uninstall 'uninstall-running'
 Assert-True ($agent.WaitForExit(5000)) 'Native uninstall did not gracefully stop the background application.'
 
-# Migrate an actual legacy PowerShell installation without executing its destructive uninstall.
-& (Join-Path $BundlePath 'Install.ps1') -NoStart -NoStartup
+# Migrate the actual 1.2.0 PowerShell installation and its running process, including its old shutdown bug.
+& (Join-Path $LegacyBundlePath 'Install.ps1') -NoStart -NoStartup
 Assert-True (Test-Path -LiteralPath $legacyKey) 'Legacy migration fixture did not register the old installation.'
+$legacyAgent = Start-Background
 Invoke-Setup 'migrate-powershell'
+Assert-True ($legacyAgent.WaitForExit(5000)) 'Migration did not let the original 1.2.0 process terminate gracefully.'
 Assert-Installed $false
 Assert-Preserved
 # Simulate the same startup value written by StartupRegistration.SetEnabled(true) after migration.
 New-ItemProperty -LiteralPath $runKey -Name $runName -PropertyType String -Value ('"' + $executable + '" --background') -Force | Out-Null
 Assert-Installed
-Invoke-Uninstall 'uninstall-migrated'
+Invoke-Uninstall 'uninstall-migrated' -PreservePreexistingDirectories
 Write-Host 'Central Biométrica Setup: GUI cancellation, native install, upgrade, legacy migration, background lifecycle, version and data-preserving uninstall passed.'

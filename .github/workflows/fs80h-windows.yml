@@ -129,6 +129,18 @@ jobs:
           & (Join-Path $installed 'Uninstall.ps1') -RemoveData
           if (Test-Path -LiteralPath $data) { throw 'Remoção explícita dos dados foi ignorada.' }
           if (Test-Path -LiteralPath $uninstallKey) { throw 'Desinstalação manteve o registro de aplicativo.' }
+      - name: Preparar instalação antiga real para testar migração
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git fetch --no-tags --depth=1 origin 9d758cfc7dac302ece29c42bf0feef3c712e6d42
+          if ($LASTEXITCODE -ne 0) { throw 'Não foi possível obter a versão 1.2.0 para testar a migração.' }
+          git worktree add --detach artifacts/legacy-source FETCH_HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Não foi possível preparar o código antigo.' }
+          dotnet publish artifacts/legacy-source/AgenteFS80H/AgenteFS80H.csproj --configuration Release --runtime win-x64 --self-contained true --output artifacts/legacy-bundle/app /p:PublishSingleFile=false /p:PublishTrimmed=false /p:PublishReadyToRun=false
+          if ($LASTEXITCODE -ne 0) { throw 'Não foi possível gerar a versão antiga real.' }
+          Copy-Item artifacts/legacy-source/installer/Install.ps1, artifacts/legacy-source/installer/Uninstall.ps1, artifacts/legacy-source/LICENSE -Destination artifacts/legacy-bundle
+          Copy-Item artifacts/legacy-source/docs/AGENTE-FS80H.md -Destination artifacts/legacy-bundle/LEIA-ME.md
       - name: Compilar instalador gráfico da Central Biométrica
         shell: pwsh
         run: ./installer/Build-Setup.ps1
@@ -137,7 +149,7 @@ jobs:
         shell: pwsh
         run: |
           [xml]$project = Get-Content AgenteFS80H/AgenteFS80H.csproj -Raw
-          ./installer/Test-Setup.ps1 -SetupPath "$PWD/artifacts/setup/Central-Biometrica-Setup.exe" -BundlePath "$PWD/artifacts/bundle" -ExpectedVersion ([string]$project.Project.PropertyGroup.Version)
+          ./installer/Test-Setup.ps1 -SetupPath "$PWD/artifacts/setup/Central-Biometrica-Setup.exe" -BundlePath "$PWD/artifacts/bundle" -LegacyBundlePath "$PWD/artifacts/legacy-bundle" -ExpectedVersion ([string]$project.Project.PropertyGroup.Version)
       - name: Disponibilizar instalador EXE e manifesto de atualização
         uses: actions/upload-artifact@v4
         with:
