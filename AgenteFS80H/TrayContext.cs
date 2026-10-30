@@ -13,6 +13,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly RegisteredWaitHandle showWait;
     private readonly Task runTask;
     private bool exiting;
+    private bool disposed;
     private AgentStatus? previousStatus;
 
     public TrayContext(AgentRuntime runtime, EventWaitHandle stop, EventWaitHandle show, bool background)
@@ -131,8 +132,9 @@ internal sealed class TrayContext : ApplicationContext
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
+        if (disposing && !disposed)
         {
+            disposed = true;
             lifetime.Cancel();
             stopWait.Unregister(null);
             showWait.Unregister(null);
