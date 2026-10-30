@@ -180,3 +180,11 @@ begin
   { Before the user presses Install, cancelling needs no extra confirmation. }
   if CurPageID <> wpInstalling then Confirm := False;
 end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+    { The app can enable startup after an install that deliberately did not write this value.
+      Remove our value independently of the conditional [Registry] uninstall log. }
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'FutureplaceAgenteFS80H');
+end;

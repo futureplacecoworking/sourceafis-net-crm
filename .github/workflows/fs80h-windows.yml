@@ -61,8 +61,8 @@ jobs:
           foreach ($script in (Get-ChildItem installer/*.ps1 | Select-Object -ExpandProperty FullName)) {
             $tokens = $null
             $parseErrors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $script), [ref]$tokens, [ref]$parseErrors) | Out-Null
-            if ($parseErrors.Count -ne 0) { throw ($parseErrors | Out-String) }
+            [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -ne 0) { throw ($script + ': ' + ($parseErrors | Format-List | Out-String)) }
           }
       - name: Testar biblioteca SourceAFIS
         run: dotnet test SourceAFIS.Tests/SourceAFIS.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/sourceafis

@@ -40,12 +40,36 @@ function Find-Button($Window, [string]$Name) {
     return $null
 }
 
+function Find-Wizard([Diagnostics.Process]$Loader, [string]$ButtonName = '') {
+    # Inno's SetupLdr owns a hidden STATIC window; the real wizard belongs to its setup.tmp child.
+    # Match only top-level windows from the loader's process tree, never an unrelated Setup window.
+    $relatedProcessIds = New-Object 'Collections.Generic.HashSet[int]'
+    [void]$relatedProcessIds.Add($Loader.Id)
+    $processes = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId)
+    do {
+        $added = $false
+        foreach ($processRecord in $processes) {
+            if ($relatedProcessIds.Contains([int]$processRecord.ParentProcessId) -and $relatedProcessIds.Add([int]$processRecord.ProcessId)) { $added = $true }
+        }
+    } while ($added)
+    $windows = [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, [Windows.Automation.Condition]::TrueCondition)
+    foreach ($candidate in $windows) {
+        if ($relatedProcessIds.Contains($candidate.Current.ProcessId) -and $candidate.Current.Name.IndexOf('Central Biométrica', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and -not $candidate.Current.IsOffscreen) {
+            if (-not $ButtonName -or (Find-Button $candidate $ButtonName)) { return $candidate }
+        }
+    }
+    return $null
+}
+
 function Save-Wizard($Window, [string]$Name) {
     $rect = $Window.Current.BoundingRectangle
     $bitmap = New-Object Drawing.Bitmap([int]$rect.Width, [int]$rect.Height)
     $graphics = [Drawing.Graphics]::FromImage($bitmap)
     try {
-        $graphics.CopyFromScreen([int]$rect.X, [int]$rect.Y, 0, 0, $bitmap.Size)
+        $deviceContext = $graphics.GetHdc()
+        try { $printed = [CentralBiometricaSetupTest.Native]::PrintWindow([IntPtr]$Window.Current.NativeWindowHandle, $deviceContext, 2) }
+        finally { $graphics.ReleaseHdc($deviceContext) }
+        if (-not $printed) { $graphics.CopyFromScreen([int]$rect.X, [int]$rect.Y, 0, 0, $bitmap.Size) }
         $bitmap.Save((Join-Path $OutputDirectory $Name), [Drawing.Imaging.ImageFormat]::Png)
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
 }
@@ -58,10 +82,8 @@ function Invoke-GraphicalInstall {
     do {
         Start-Sleep -Milliseconds 100
         $wizard.Refresh()
-        if ($wizard.MainWindowHandle -ne [IntPtr]::Zero) {
-            $window = [Windows.Automation.AutomationElement]::FromHandle($wizard.MainWindowHandle)
-            $installButton = Find-Button $window 'Instalar'
-        }
+        $window = Find-Wizard $wizard 'Instalar'
+        if ($window) { $installButton = Find-Button $window 'Instalar' }
     } while (-not $installButton -and -not $wizard.HasExited -and [DateTime]::UtcNow -lt $deadline)
     Assert-True ($null -ne $installButton) 'The graphical installer did not offer Instalar directly.'
     Save-Wizard $window 'central-biometrica-instalar.png'
@@ -73,7 +95,6 @@ function Invoke-GraphicalInstall {
         Start-Sleep -Milliseconds 60
         $wizard.Refresh()
         if (-not $wizard.HasExited) {
-            $window = [Windows.Automation.AutomationElement]::FromHandle($wizard.MainWindowHandle)
             $progress = $window.FindFirst([Windows.Automation.TreeScope]::Descendants, (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::ProgressBar)))
             if ($progress -and -not $progress.Current.IsOffscreen -and -not $capturedProgress) { Save-Wizard $window 'central-biometrica-progresso.png'; $capturedProgress = $true }
             $finishButton = Find-Button $window 'Concluir'
@@ -175,6 +196,8 @@ namespace CentralBiometricaSetupTest {
     public static class Native {
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool PrintWindow(IntPtr window, IntPtr deviceContext, uint flags);
     }
 }
 '@
@@ -184,14 +207,11 @@ $readyWindow = $null
 do {
     Start-Sleep -Milliseconds 150
     $preview.Refresh()
-    if ($preview.MainWindowHandle -ne [IntPtr]::Zero) {
-        $window = [Windows.Automation.AutomationElement]::FromHandle($preview.MainWindowHandle)
-        if (Find-Button $window 'Instalar') { $readyWindow = $window }
-    }
+    $readyWindow = Find-Wizard $preview 'Instalar'
 } while (-not $readyWindow -and -not $preview.HasExited -and [DateTime]::UtcNow -lt $deadline)
 Assert-True ($null -ne $readyWindow) 'The graphical Setup did not show its direct Instalar action.'
 Save-Wizard $readyWindow 'central-biometrica-setup.png'
-Assert-True ($preview.CloseMainWindow()) 'Could not cancel the unstarted graphical installer.'
+Assert-True ([CentralBiometricaSetupTest.Native]::PostMessage([IntPtr]$readyWindow.Current.NativeWindowHandle, 0x10, [IntPtr]::Zero, [IntPtr]::Zero)) 'Could not cancel the unstarted graphical installer.'
 Assert-True ($preview.WaitForExit(15000)) 'Cancelling the unstarted installer did not close it.'
 Assert-True (-not (Test-Path -LiteralPath $installed)) 'Cancelling before Instalar created an application installation.'
 Assert-True (-not (Test-Path -LiteralPath $uninstallKey)) 'Cancelling before Instalar registered the application.'
@@ -240,10 +260,13 @@ Invoke-Uninstall 'uninstall-running'
 Assert-True ($agent.WaitForExit(5000)) 'Native uninstall did not gracefully stop the background application.'
 
 # Migrate an actual legacy PowerShell installation without executing its destructive uninstall.
-& (Join-Path $BundlePath 'Install.ps1') -NoStart
+& (Join-Path $BundlePath 'Install.ps1') -NoStart -NoStartup
 Assert-True (Test-Path -LiteralPath $legacyKey) 'Legacy migration fixture did not register the old installation.'
 Invoke-Setup 'migrate-powershell'
-Assert-Installed
+Assert-Installed $false
 Assert-Preserved
+# Simulate the same startup value written by StartupRegistration.SetEnabled(true) after migration.
+New-ItemProperty -LiteralPath $runKey -Name $runName -PropertyType String -Value ('"' + $executable + '" --background') -Force | Out-Null
+Assert-Installed
 Invoke-Uninstall 'uninstall-migrated'
 Write-Host 'Central Biométrica Setup: GUI cancellation, native install, upgrade, legacy migration, background lifecycle, version and data-preserving uninstall passed.'
