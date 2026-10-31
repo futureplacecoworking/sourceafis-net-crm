@@ -54,6 +54,8 @@ internal sealed partial class MainForm : Form
     public Task PendingOperation { get; private set; } = Task.CompletedTask;
     /// <summary>Quantas vezes o tamanho dos textos foi de fato recalculado (não conta as chamadas que não mudaram nada). Os testes conferem que fica pequeno.</summary>
     internal int ResizeContentRuns { get; private set; }
+    /// <summary>As últimas larguras aplicadas (os testes mostram isto quando uma conta estoura).</summary>
+    internal ContentWidths? AppliedWidths => appliedWidths;
     /// <summary>Cria a página nova da tela do cliente. Nulo = só a tela simples (usado nos testes, sem WebView2).</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal Func<IClientWebHost>? ClientWebHostFactory { get; set; } = () => new WebView2ClientHost();

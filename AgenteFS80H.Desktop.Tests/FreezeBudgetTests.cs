@@ -55,15 +55,27 @@ public class FreezeBudgetTests
     [TestCase(1.5F)]
     public void ResizingBeforeOpeningSettingsDoesNotLeaveTheWorkForTheClick(float scale)
     {
-        using var ui = new UiFixture(paired: false);
-        if (scale != 1F) ui.Form.Scale(new SizeF(scale, scale));
-        ui.Form.ClientSize = new Size(1366, 768); // a janela muda enquanto Configurações está escondida
-        UiFixture.Pump();
-        var counter = new LayoutCounter(ui);
-        var runs = ui.Form.ResizeContentRuns;
-        ui.Click("setupReader");
-        Assert.That(ui.Form.ResizeContentRuns - runs, Is.Zero, "O tamanho já tinha sido ajustado para as duas páginas na hora de redimensionar.");
-        Assert.That(counter.Settings, Is.LessThanOrEqualTo(LayoutBudget));
+        var log = new RecordingLog();
+        var previous = AppLog.Current;
+        AppLog.Current = log;
+        try
+        {
+            using var ui = new UiFixture(paired: false);
+            if (scale != 1F) ui.Form.Scale(new SizeF(scale, scale));
+            ui.Form.ClientSize = new Size(1366, 768); // a janela muda enquanto Configurações está escondida
+            UiFixture.Pump();
+            var counter = new LayoutCounter(ui);
+            var runs = ui.Form.ResizeContentRuns;
+            var before = ui.Form.AppliedWidths;
+            var pagesBefore = ui.Find<Control>("settingsPage").Size;
+            log.Steps.Clear();
+            ui.Click("setupReader");
+            Assert.That(ui.Form.ResizeContentRuns - runs, Is.Zero,
+                $"O tamanho já tinha sido ajustado para as duas páginas na hora de redimensionar. Antes {before}; depois {ui.Form.AppliedWidths}; " +
+                $"janela {ui.Form.ClientSize}; página Configurações antes {pagesBefore}, depois {ui.Find<Control>("settingsPage").Size}; etapas: {string.Join(" > ", log.Steps)}.");
+            Assert.That(counter.Settings, Is.LessThanOrEqualTo(LayoutBudget));
+        }
+        finally { AppLog.Current = previous; }
     }
 
     [Test]
