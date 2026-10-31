@@ -1,5 +1,22 @@
 # Versões da Central Biométrica
 
+## 1.4.1 — 31/10/2026
+
+Ajuste para a janela não travar mais ao abrir **Configurações**:
+
+- **Corrigida a provável causa da janela "Não está respondendo" ao clicar em "Configurar leitor"** (também ao abrir
+  Configurações pela bandeja ou pela lista de preparação), vista em computadores com a tela em zoom de 125% ou 150%. O
+  tamanho dos textos agora é ajustado uma vez só, na escala certa da tela, e a janela só se redesenha quando alguma coisa
+  de fato mudou (antes ela era redesenhada a cada 0,6 segundo, mesmo com o leitor parado). A página que está escondida
+  também deixa de ser refeita a cada leitura. A tela do cliente ganhou o mesmo cuidado. A causa foi encontrada lendo o
+  programa; se o travamento voltar, o registro local (abaixo) mostra o que aconteceu.
+- **O programa guarda um registro local de erros e travamentos**, só neste computador, em
+  `%LOCALAPPDATA%\Futureplace\AgenteFS80H\logs` (dois arquivos de até 512 KB). Se a janela ficar mais de 3 segundos sem
+  responder, o registro anota quanto tempo durou e em que etapa estava. Não grava nomes, digitais, endereços, códigos nem
+  a mensagem dos erros: só o tipo do erro e o caminho no programa. Serve para a equipe entender o que aconteceu se algo
+  parecido voltar.
+- Nada muda no pareamento, nas digitais, nas regras de acesso nem na Central.
+
 ## 1.4.0 — 31/10/2026
 
 O que mudou depois do teste no FS80H (issue #265 da Central):
