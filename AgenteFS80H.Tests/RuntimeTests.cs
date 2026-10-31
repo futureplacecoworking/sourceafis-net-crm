@@ -497,11 +497,70 @@ public class RuntimeTests
         Assert.That(store.LoadState().Configuration.DeviceToken, Is.EqualTo(token));
     }
 
-    private sealed class ManualClock : TimeProvider
+    internal sealed class ManualClock(DateTimeOffset? start = null) : TimeProvider
     {
-        private DateTimeOffset now = DateTimeOffset.UtcNow;
+        private DateTimeOffset now = start ?? DateTimeOffset.UtcNow;
         public override DateTimeOffset GetUtcNow() => now;
         public void Advance(TimeSpan duration) => now += duration;
+    }
+
+    [Test, Category("SemTravar")]
+    public async Task TwentyIdleCyclesWhileUnpairedRaiseChangedOnlyOnce()
+    {
+        var store = new MemoryStore();
+        store.Clear(); // este computador ainda não foi pareado
+        using var runtime = Create(store, new FakeCentral(), new SecurityAndCaptureTests.FakeScanner([]));
+        var changes = new List<AgentSnapshot>();
+        runtime.Changed += changes.Add;
+        for (var cycle = 0; cycle < 20; cycle++) await runtime.RunCycleAsync(CancellationToken.None);
+        Assert.That(changes, Has.Count.EqualTo(1), "Repetir o mesmo estado a cada ciclo não pode redesenhar a janela 20 vezes.");
+        Assert.That(changes[0].Status, Is.EqualTo(AgentStatus.Unconfigured));
+        Assert.That(runtime.Snapshot.Message, Is.EqualTo(changes[0].Message));
+
+        await runtime.ResetPairingAsync(CancellationToken.None);
+        Assert.That(changes, Has.Count.EqualTo(2), "Uma mensagem nova continua sendo avisada.");
+    }
+
+    [Test, Category("SemTravar")]
+    public async Task TheLastContactChangesTheScreenOnlyWhenTheMinuteChanges()
+    {
+        var clock = new ManualClock(new DateTimeOffset(2026, 10, 31, 15, 0, 0, TimeSpan.Zero));
+        var api = new FakeCentral { OnSync = () => ActiveSync([], serverTime: clock.GetUtcNow()) };
+        using var runtime = new AgentRuntime(new MemoryStore(), _ => api, _ => new SecurityAndCaptureTests.FakeScanner([]), new SecurityAndCaptureTests.FakeRecognizer(), clock);
+        var changes = new List<AgentSnapshot>();
+        runtime.Changed += changes.Add;
+        await runtime.RunCycleAsync(CancellationToken.None);
+        Assert.That(changes, Has.Count.EqualTo(1));
+        Assert.That(changes[0].Status, Is.EqualTo(AgentStatus.Ready));
+        clock.Advance(TimeSpan.FromSeconds(10));
+        await runtime.RunCycleAsync(CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(49)); // 15:00:59
+        await runtime.RunCycleAsync(CancellationToken.None);
+        Assert.That(changes, Has.Count.EqualTo(1), "A tela mostra o contato só em HH:mm: os segundos não mudam nada.");
+        Assert.That(runtime.Snapshot.LastContactAt, Is.EqualTo(clock.GetUtcNow()), "O estado guardado continua com o contato mais recente.");
+        clock.Advance(TimeSpan.FromSeconds(2)); // 15:01:01
+        await runtime.RunCycleAsync(CancellationToken.None);
+        Assert.That(changes, Has.Count.EqualTo(2));
+        Assert.That(changes[1].LastContactAt, Is.EqualTo(clock.GetUtcNow()));
+    }
+
+    [Test, Category("SemTravar")]
+    public async Task EveryResultStillSignalsEvenThoughRepeatedStatesAreNotBroadcast()
+    {
+        var id = Guid.NewGuid();
+        var store = new MemoryStore();
+        store.SaveTemplate(new StoredTemplate(id, Guid.NewGuid(), [7]));
+        var api = new FakeCentral { Sync = ActiveSync([id]) };
+        // Duas apresentações seguidas, as duas negadas pela Central: o mesmo resultado na tela, um bipe para cada.
+        using var runtime = Create(store, api, new SecurityAndCaptureTests.FakeScanner([false, true, false, true]));
+        var signals = new List<AgentSignal>();
+        var denied = 0;
+        runtime.Signaled += signals.Add;
+        runtime.Changed += snapshot => { if (snapshot.Identification?.Result == IdentificationResult.Denied) denied++; };
+        await runtime.RunCycleAsync(CancellationToken.None);
+        await runtime.RunCycleAsync(CancellationToken.None);
+        Assert.That(signals, Is.EqualTo(new[] { AgentSignal.Negative, AgentSignal.Negative }));
+        Assert.That(denied, Is.EqualTo(2));
     }
 
     [Test]

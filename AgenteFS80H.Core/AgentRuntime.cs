@@ -585,9 +585,18 @@ public sealed class AgentRuntime : IDisposable
     private void SetStatus(AgentStatus status, string message, ReaderHint hint = ReaderHint.None,
         IdentificationProgress? identification = null, EnrollmentProgress? enrollment = null)
     {
-        Snapshot = new(status, message) { Hint = hint, Identification = identification, Enrollment = enrollment, LastContactAt = lastContact };
-        Changed?.Invoke(Snapshot);
+        var next = new AgentSnapshot(status, message) { Hint = hint, Identification = identification, Enrollment = enrollment, LastContactAt = lastContact };
+        var changed = !SameOnScreen(Snapshot, next);
+        Snapshot = next;
+        // O leitor repete o mesmo estado a cada ciclo (a cada 0,6 s): só avisa a tela quando algo que ela mostra mudou.
+        if (changed) Changed?.Invoke(next);
     }
+
+    /// <summary>A tela mostra o último contato só em HH:mm, então os segundos não contam como mudança.</summary>
+    private static bool SameOnScreen(AgentSnapshot previous, AgentSnapshot next) =>
+        previous.Status == next.Status && previous.Message == next.Message && previous.Hint == next.Hint
+        && previous.Identification == next.Identification && previous.Enrollment == next.Enrollment
+        && previous.LastContactAt?.UtcTicks / TimeSpan.TicksPerMinute == next.LastContactAt?.UtcTicks / TimeSpan.TicksPerMinute;
     private static void ClearTemplates(IEnumerable<StoredTemplate> templates)
     {
         foreach (var template in templates) template.Clear();

@@ -22,6 +22,9 @@ internal sealed class ClientScreenForm : Form
     private readonly TableLayoutPanel content;
     private Rectangle windowBounds;
     private float titleSize;
+    private (float Row, int Width, float TitleSize)? appliedLayout;
+    private bool resizing;
+    private bool resizeAgain;
 
     public ClientScreenForm(Func<IClientWebHost>? webHostFactory = null)
     {
@@ -97,6 +100,9 @@ internal sealed class ClientScreenForm : Form
     /// <summary>A tela nova não abriu; a janela segue na tela simples. A recepção é avisada de como resolver.</summary>
     public event Action<ClientWebFailure>? WebUnavailable;
 
+    /// <summary>Quantas vezes o tamanho dos textos foi de fato recalculado (não conta as chamadas que não mudaram nada). Os testes conferem que fica pequeno.</summary>
+    internal int ResizeContentRuns { get; private set; }
+
     /// <summary>True enquanto a página nova (WebView2) é a que está na tela.</summary>
     public bool UsingWebPage => web is not null;
 
@@ -120,6 +126,7 @@ internal sealed class ClientScreenForm : Form
 
     private async Task StartWebAsync()
     {
+        AppLog.Step("StartWebAsync");
         var host = web;
         if (host is null) return;
         try
@@ -223,28 +230,69 @@ internal sealed class ClientScreenForm : Form
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    private void ResizeContent()
+    /// <summary>
+    /// Ajusta os textos ao tamanho da janela. Só recalcula quando algo mudou e, se um evento de tamanho chegar no meio,
+    /// repete no máximo mais uma vez.
+    /// </summary>
+    internal void ResizeContent()
+    {
+        if (resizing)
+        {
+            resizeAgain = true;
+            return;
+        }
+        if (IsDisposed) return;
+        resizing = true;
+        try
+        {
+            for (var pass = 0; pass < 2; pass++)
+            {
+                resizeAgain = false;
+                if (!ApplyLayout() || !resizeAgain) break;
+            }
+        }
+        finally
+        {
+            resizing = false;
+            resizeAgain = false;
+        }
+    }
+
+    private bool ApplyLayout()
     {
         var scale = DeviceDpi / 96F;
         var height = ClientSize.Height / scale;
-        content.RowStyles[1].Height = height < 600 ? 110 * scale : height < 800 ? 166 * scale : 224 * scale;
+        var row = height < 600 ? 110 * scale : height < 800 ? 166 * scale : 224 * scale;
         var width = Math.Max(200, content.ClientSize.Width - (int)(12 * scale));
-        foreach (var label in new[] { caption, title, welcome, instruction }) label.MaximumSize = new Size(width, 0);
         var desiredSize = height < 600 ? 25F : height < 800 ? 32F : 40F;
-        if (titleSize != desiredSize)
+        var next = (row, width, desiredSize);
+        if (appliedLayout == next) return false;
+        AppLog.Step("ResizeContent:cliente");
+        ResizeContentRuns++;
+        content.SuspendLayout();
+        try
         {
-            var next = CentralTheme.Heading(desiredSize);
-            // Control.Font keeps its existing instance when an equal font is assigned.
-            // Disposing that still-selected instance would break GDI+ text measurement.
-            if (title.Font.Equals(next)) next.Dispose();
-            else
+            if (content.RowStyles[1].Height != row) content.RowStyles[1].Height = row;
+            foreach (var label in new[] { caption, title, welcome, instruction })
+                if (label.MaximumSize.Width != width || label.MaximumSize.Height != 0) label.MaximumSize = new Size(width, 0);
+            if (titleSize != desiredSize)
             {
-                var old = title.Font;
-                title.Font = next;
-                old.Dispose();
+                var font = CentralTheme.Heading(desiredSize);
+                // Control.Font keeps its existing instance when an equal font is assigned.
+                // Disposing that still-selected instance would break GDI+ text measurement.
+                if (title.Font.Equals(font)) font.Dispose();
+                else
+                {
+                    var old = title.Font;
+                    title.Font = font;
+                    old.Dispose();
+                }
+                titleSize = desiredSize;
             }
-            titleSize = desiredSize;
+            appliedLayout = next;
         }
+        finally { content.ResumeLayout(true); }
+        return true;
     }
 
     private static Label Label(string name, float size, bool heading = false) => new()

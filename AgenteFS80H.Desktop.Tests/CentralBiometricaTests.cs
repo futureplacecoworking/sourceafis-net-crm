@@ -164,7 +164,7 @@ public class CentralBiometricaTests
     {
         using var ui = new UiFixture(deviceName: "Recepção — FS80H");
         Assert.That(ui.Find<Control>("pairingSummary").Text, Is.EqualTo("Ligado à Central como «Recepção — FS80H»"));
-        Assert.That(ui.Find<Control>("pairingDetail").Text, Does.Contain("Ainda sem contato").And.Contain("Central Biométrica 1.4.0"));
+        Assert.That(ui.Find<Control>("pairingDetail").Text, Does.Contain("Ainda sem contato").And.Contain("Central Biométrica " + AppIdentity.Version));
         ui.Snapshot(new AgentSnapshot(AgentStatus.Ready, "Coloque o dedo cadastrado no leitor.") { Hint = ReaderHint.PlaceFinger, LastContactAt = DateTimeOffset.UtcNow });
         Assert.That(ui.Find<Control>("pairingDetail").Text, Does.StartWith("Último contato com a Central:"));
         Assert.That(ui.Find<Control>("checkPairing").Text, Is.EqualTo("Ligado à Central como «Recepção — FS80H»."));

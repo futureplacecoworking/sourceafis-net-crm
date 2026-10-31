@@ -64,9 +64,9 @@ internal sealed partial class MainForm
         checklist[key] = new ChecklistRow(mark, detail, button);
     }
 
-    private void ResizeChecklist(int width)
+    private void ResizeChecklist(int detailWidth)
     {
-        foreach (var row in checklist.Values) row.Detail.MaximumSize = new Size(Math.Max(200, width - 260), 0);
+        foreach (var row in checklist.Values) SetMaximumWidth(row.Detail, detailWidth);
     }
 
     private void ClientChecklistAction()

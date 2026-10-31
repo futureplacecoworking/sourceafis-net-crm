@@ -8,6 +8,7 @@ internal sealed partial class MainForm
     internal void ShowClientScreen()
     {
         if (exiting) return;
+        AppLog.Step("ShowClientScreen");
         if (clientScreen is null || clientScreen.IsDisposed)
         {
             var window = new ClientScreenForm(ClientWebHostFactory);

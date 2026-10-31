@@ -15,7 +15,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Futureplace.AgenteFS80H.Desktop</RootNamespace>
     <AssemblyName>AgenteFS80H</AssemblyName>
-    <Version>1.4.0</Version>
+    <Version>1.4.1</Version>
     <Company>Future Place Coworking</Company>
     <Product>Central Biométrica</Product>
     <Description>Central Biométrica — leitor da recepção Future Place.</Description>
