@@ -7,7 +7,6 @@ internal sealed partial class MainForm
     private readonly Label diagnosticConnection = TextLabel("");
     private readonly Label diagnosticReader = TextLabel("");
     private readonly Label diagnosticGuidance = TextLabel("");
-    private AgentSnapshot? diagnosticSnapshot;
     private DiagnosticEntry? inspectedLibrary;
     private string? inspectedLibraryPath;
     private Control? diagnosticCard;
@@ -41,12 +40,11 @@ internal sealed partial class MainForm
     {
         inspectedLibraryPath = runtime.Configuration.ScannerDllPath;
         inspectedLibrary = ReaderDiagnostics.InspectLibrary(inspectedLibraryPath);
-        RenderDiagnostics(diagnosticSnapshot ?? runtime.Snapshot);
+        RenderDiagnostics(displayedSnapshot ?? runtime.Snapshot);
     }
 
     private void UpdateDiagnostics(AgentSnapshot snapshot)
     {
-        diagnosticSnapshot = snapshot;
         if (inspectedLibrary is null || inspectedLibraryPath != runtime.Configuration.ScannerDllPath)
         {
             inspectedLibraryPath = runtime.Configuration.ScannerDllPath;

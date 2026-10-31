@@ -31,6 +31,7 @@ internal sealed partial class MainForm : Form
     private readonly CheckBox sound = new() { Name = "soundEnabled" };
     private readonly Panel readingPage = Page("readingPage");
     private readonly Panel settingsPage = Page("settingsPage");
+    private readonly Panel pages = new() { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(28, 0, 28, 0) };
     private readonly CentralCard setupGuide = new() { Name = "setupGuide", AutoSize = true, Dock = DockStyle.Top };
     private readonly PictureBox fingerprint = new() { Size = new Size(144, 144), SizeMode = PictureBoxSizeMode.Zoom, Margin = new Padding(0, 16, 28, 16), AccessibleName = "Future Place Coworking — leitor de digital" };
     private readonly List<Label> wrappingLabels = [];
@@ -42,11 +43,17 @@ internal sealed partial class MainForm : Form
     private bool changingSound;
     private bool startupAvailable = true;
     private bool exiting;
+    private bool showingSettings;
+    private ContentWidths? appliedWidths;
+    private bool resizing;
+    private bool resizeAgain;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool AllowClose { get; set; }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Task PendingOperation { get; private set; } = Task.CompletedTask;
+    /// <summary>Quantas vezes o tamanho dos textos foi de fato recalculado (não conta as chamadas que não mudaram nada). Os testes conferem que fica pequeno.</summary>
+    internal int ResizeContentRuns { get; private set; }
     /// <summary>Cria a página nova da tela do cliente. Nulo = só a tela simples (usado nos testes, sem WebView2).</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal Func<IClientWebHost>? ClientWebHostFactory { get; set; } = () => new WebView2ClientHost();
@@ -96,7 +103,6 @@ internal sealed partial class MainForm : Form
         actionMessage.TextChanged += (_, _) => actionMessage.Visible = !string.IsNullOrEmpty(actionMessage.Text);
         shell.Controls.Add(actionMessage, 0, 2);
         shell.Controls.Add(BuildUpdateBanner(), 0, 3);
-        var pages = new Panel { Dock = DockStyle.Fill, Margin = Padding.Empty, Padding = new Padding(28, 0, 28, 0) };
         pages.SuspendLayout();
         pages.Controls.Add(settingsPage);
         pages.Controls.Add(readingPage);
@@ -319,6 +325,11 @@ internal sealed partial class MainForm : Form
         stack.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         return stack;
     }
+    private static void SuspendTree(Control control)
+    {
+        control.SuspendLayout();
+        foreach (Control child in control.Controls) SuspendTree(child);
+    }
     private static void ResumeTree(Control control)
     {
         foreach (Control child in control.Controls) ResumeTree(child);
@@ -366,36 +377,99 @@ internal sealed partial class MainForm : Form
         box.Margin = new Padding(0, 0, 0, 14);
         box.MinimumSize = new Size(0, 32);
     }
-    private void ResizeContent()
+    /// <summary>
+    /// Ajusta a largura dos textos à janela. Só recalcula quando a janela ou a escala mudaram, mexe numa vez só (layout suspenso)
+    /// e, se um evento de tamanho chegar no meio, repete no máximo mais uma vez: nunca vira uma sequência sem fim de ajustes.
+    /// </summary>
+    internal void ResizeContent()
     {
-        actionMessage.MaximumSize = new Size(Math.Max(240, ClientSize.Width - 64), 0);
-        var full = Math.Max(320, settingsPage.ClientSize.Width - 68);
-        foreach (var label in wrappingLabels) label.MaximumSize = new Size(full, 0);
-        pairingState.MaximumSize = libraryState.MaximumSize = pairingSummary.MaximumSize = pairingDetail.MaximumSize = new Size(full, 0);
-        ResizeChecklist(full);
-        var hero = Math.Max(280, readingPage.ClientSize.Width - 240);
-        statusTitle.MaximumSize = statusMessage.MaximumSize = new Size(hero, 0);
+        if (resizing)
+        {
+            resizeAgain = true;
+            return;
+        }
+        if (IsDisposed) return;
+        resizing = true;
+        try
+        {
+            for (var pass = 0; pass < 2; pass++)
+            {
+                resizeAgain = false;
+                if (!ApplyContentWidths() || !resizeAgain) break;
+            }
+        }
+        finally
+        {
+            resizing = false;
+            resizeAgain = false;
+        }
+    }
+
+    private bool ApplyContentWidths()
+    {
+        var widths = ContentWidths.Compute(ClientSize.Width, pages.ClientSize.Width - pages.Padding.Horizontal,
+            SystemInformation.GetVerticalScrollBarWidthForDpi(DeviceDpi), DeviceDpi / 96F);
+        // O primeiro texto serve de prova: se o Windows reescalou os tamanhos por conta própria, aplica de novo.
+        if (appliedWidths == widths && (wrappingLabels.Count == 0 || wrappingLabels[0].MaximumSize.Width == widths.Full)) return false;
+        AppLog.Step("ResizeContent");
+        ResizeContentRuns++;
+        SuspendLayout();
+        SuspendTree(pages);
+        try
+        {
+            SetMaximumWidth(actionMessage, widths.Action);
+            foreach (var label in wrappingLabels) SetMaximumWidth(label, widths.Full);
+            foreach (var label in new[] { pairingState, libraryState, pairingSummary, pairingDetail }) SetMaximumWidth(label, widths.Full);
+            ResizeChecklist(widths.Checklist);
+            SetMaximumWidth(statusTitle, widths.Hero);
+            SetMaximumWidth(statusMessage, widths.Hero);
+            appliedWidths = widths;
+        }
+        finally
+        {
+            ResumeTree(pages);
+            ResumeLayout(true);
+        }
+        return true;
+    }
+
+    private static void SetMaximumWidth(Label label, int width)
+    {
+        // Cada mudança de MaximumSize refaz o layout em cascata: só mexe no que de fato mudou.
+        if (label.MaximumSize.Width != width || label.MaximumSize.Height != 0) label.MaximumSize = new Size(width, 0);
     }
 
     internal void ShowSettings() => ShowPage(true);
     private void ShowPage(bool settings)
     {
         if (exiting) return;
-        settingsPage.Visible = settings;
-        readingPage.Visible = !settings;
-        (settings ? settingsPage : readingPage).BringToFront();
-        navigationReading.ForeColor = settings ? CentralTheme.Muted : CentralTheme.Primary;
-        navigationSettings.ForeColor = settings ? CentralTheme.Primary : CentralTheme.Muted;
-        navigationReading.Selected = !settings;
-        navigationSettings.Selected = settings;
-        navigationReading.AccessibleDescription = settings ? "Abrir a leitura automática" : "Aba atual";
-        navigationSettings.AccessibleDescription = settings ? "Aba atual" : "Abrir configurações do computador";
-        AcceptButton = settings ? pairButton : null;
+        AppLog.Step(settings ? "ShowPage:Configurações" : "ShowPage:Leitura");
+        AppLog.Current.Info($"Página {(settings ? "Configurações" : "Leitura")} (tela {DeviceDpi} dpi, janela {ClientSize.Width}x{ClientSize.Height})");
+        // As larguras ficam prontas antes da página aparecer; a troca inteira acontece com o layout suspenso, num ajuste só.
         ResizeContent();
+        showingSettings = settings;
+        SuspendTree(pages);
+        try
+        {
+            settingsPage.Visible = settings;
+            readingPage.Visible = !settings;
+            var shown = settings ? settingsPage : readingPage;
+            if (pages.Controls.GetChildIndex(shown) != 0) shown.BringToFront();
+            navigationReading.ForeColor = settings ? CentralTheme.Muted : CentralTheme.Primary;
+            navigationSettings.ForeColor = settings ? CentralTheme.Primary : CentralTheme.Muted;
+            navigationReading.Selected = !settings;
+            navigationSettings.Selected = settings;
+            navigationReading.AccessibleDescription = settings ? "Abrir a leitura automática" : "Aba atual";
+            navigationSettings.AccessibleDescription = settings ? "Aba atual" : "Abrir configurações do computador";
+            AcceptButton = settings ? pairButton : null;
+            RenderCurrentPage(displayedSnapshot ?? runtime.Snapshot);
+        }
+        finally { ResumeTree(pages); }
     }
 
     public void ReloadConfiguration()
     {
+        AppLog.Step("ReloadConfiguration");
         var configuration = runtime.Configuration;
         if (displayedCentralUrl != configuration.CentralUrl)
         {
@@ -412,7 +486,8 @@ internal sealed partial class MainForm : Form
         changingSound = true;
         try { sound.Checked = configuration.SoundEnabled; }
         finally { changingSound = false; }
-        RenderConnection(displayedSnapshot ?? runtime.Snapshot);
+        // Aqui o arquivo de configuração mudou (ou a janela foi aberta de novo): as duas páginas são refeitas.
+        RenderConnection(displayedSnapshot ?? runtime.Snapshot, reading: true, settings: true);
         ReloadDiagnosticsConfiguration();
         RenderChecklistNow();
     }
@@ -433,7 +508,7 @@ internal sealed partial class MainForm : Form
     }
 
     /// <summary>Nome do leitor na Central, último contato e versão: a recepção sabe na hora se o PC está pareado.</summary>
-    private void RenderConnection(AgentSnapshot snapshot)
+    private void RenderConnection(AgentSnapshot snapshot, bool reading, bool settings)
     {
         var configuration = runtime.Configuration;
         string summary;
@@ -463,10 +538,13 @@ internal sealed partial class MainForm : Form
             }
         }
         detail += $" · Central Biométrica {AppIdentity.Version}";
-        SetText(pairingSummary, summary);
-        SetText(pairingDetail, detail);
-        pairingSummary.ForeColor = tone;
-        SetText(pairingState, summary + ". " + detail);
+        if (reading)
+        {
+            SetText(pairingSummary, summary);
+            SetText(pairingDetail, detail);
+            pairingSummary.ForeColor = tone;
+        }
+        if (settings) SetText(pairingState, summary + ". " + detail);
     }
 
     private static void SetText(Control control, string text)
@@ -478,35 +556,63 @@ internal sealed partial class MainForm : Form
     public void ShowSnapshot(AgentSnapshot snapshot)
     {
         if (exiting) return;
+        AppLog.Step("ShowSnapshot");
         displayedSnapshot = snapshot;
-        UpdateDiagnostics(snapshot);
         if (clientScreen is { IsDisposed: false }) clientScreen.ShowSnapshot(snapshot);
-        SetText(statusTitle, ReadingTitle(snapshot));
-        var accent = snapshot switch
+        RenderCurrentPage(snapshot);
+    }
+
+    // Só a página que a pessoa está vendo é refeita; a outra se atualiza quando for aberta (ShowPage).
+    private void RenderCurrentPage(AgentSnapshot snapshot)
+    {
+        if (showingSettings) RenderSettings(snapshot);
+        else RenderReading(snapshot);
+    }
+
+    private void RenderSettings(AgentSnapshot snapshot)
+    {
+        SuspendTree(settingsPage);
+        try
         {
-            { Enrollment.Phase: EnrollmentPhase.Completed } => CentralTheme.Success,
-            { Enrollment.Phase: EnrollmentPhase.Failed or EnrollmentPhase.Cancelled or EnrollmentPhase.BadReading } => CentralTheme.Warning,
-            { Enrollment: not null } => CentralTheme.Primary,
-            { Status: AgentStatus.Authorized } => CentralTheme.Success,
-            { Status: AgentStatus.Error or AgentStatus.Revoked } => CentralTheme.Danger,
-            { Status: AgentStatus.Denied or AgentStatus.Offline } => CentralTheme.Warning,
-            _ => CentralTheme.Primary
-        };
-        statusTitle.ForeColor = accent;
-        statusCaption.ForeColor = accent;
-        SetText(statusMessage, snapshot.Message);
-        SetText(statusCaption, snapshot switch
+            UpdateDiagnostics(snapshot);
+            RenderConnection(snapshot, reading: false, settings: true);
+        }
+        finally { ResumeTree(settingsPage); }
+    }
+
+    private void RenderReading(AgentSnapshot snapshot)
+    {
+        SuspendTree(readingPage);
+        try
         {
-            { Enrollment: not null } => "CADASTRO DE DIGITAL",
-            { Identification.Result: IdentificationResult.NotRecognized or IdentificationResult.BadReading } => "LEITURA NESTE COMPUTADOR",
-            { Status: AgentStatus.Capturing } => "ACOMPANHE A LEITURA",
-            { Status: AgentStatus.Authorized or AgentStatus.Denied } => "DECISÃO DA CENTRAL",
-            { Status: AgentStatus.Offline or AgentStatus.Revoked or AgentStatus.Error } => "LEITOR PRECISA DE ATENÇÃO",
-            { Status: AgentStatus.Ready } => "LEITURA AUTOMÁTICA",
-            _ => "LEITOR DA RECEPÇÃO"
-        });
-        RenderConnection(snapshot);
-        RenderChecklist(snapshot);
+            SetText(statusTitle, ReadingTitle(snapshot));
+            var accent = snapshot switch
+            {
+                { Enrollment.Phase: EnrollmentPhase.Completed } => CentralTheme.Success,
+                { Enrollment.Phase: EnrollmentPhase.Failed or EnrollmentPhase.Cancelled or EnrollmentPhase.BadReading } => CentralTheme.Warning,
+                { Enrollment: not null } => CentralTheme.Primary,
+                { Status: AgentStatus.Authorized } => CentralTheme.Success,
+                { Status: AgentStatus.Error or AgentStatus.Revoked } => CentralTheme.Danger,
+                { Status: AgentStatus.Denied or AgentStatus.Offline } => CentralTheme.Warning,
+                _ => CentralTheme.Primary
+            };
+            statusTitle.ForeColor = accent;
+            statusCaption.ForeColor = accent;
+            SetText(statusMessage, snapshot.Message);
+            SetText(statusCaption, snapshot switch
+            {
+                { Enrollment: not null } => "CADASTRO DE DIGITAL",
+                { Identification.Result: IdentificationResult.NotRecognized or IdentificationResult.BadReading } => "LEITURA NESTE COMPUTADOR",
+                { Status: AgentStatus.Capturing } => "ACOMPANHE A LEITURA",
+                { Status: AgentStatus.Authorized or AgentStatus.Denied } => "DECISÃO DA CENTRAL",
+                { Status: AgentStatus.Offline or AgentStatus.Revoked or AgentStatus.Error } => "LEITOR PRECISA DE ATENÇÃO",
+                { Status: AgentStatus.Ready } => "LEITURA AUTOMÁTICA",
+                _ => "LEITOR DA RECEPÇÃO"
+            });
+            RenderConnection(snapshot, reading: true, settings: false);
+            RenderChecklist(snapshot);
+        }
+        finally { ResumeTree(readingPage); }
     }
 
     /// <summary>Título da página Leitura, a partir do andamento estruturado (sem ler o texto da mensagem).</summary>

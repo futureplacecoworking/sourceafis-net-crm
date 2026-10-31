@@ -9,7 +9,19 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-        Application.ThreadException += (_, _) => ShowSafeError();
+        Application.ThreadException += (_, e) =>
+        {
+            AppLog.Current.Error("Erro na janela", e.Exception);
+            ShowSafeError();
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            if (e.ExceptionObject is Exception error) AppLog.Current.Error("Erro não tratado", error);
+            else AppLog.Current.Info("Erro não tratado de origem desconhecida");
+            // O processo vai encerrar: dá um instante para a linha chegar ao disco.
+            (AppLog.Current as FileDiagnostics)?.Flush(TimeSpan.FromSeconds(2));
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) => AppLog.Current.Error("Tarefa com erro não observado", e.Exception);
 
         // Named objects are scoped to the Windows session and the signed-in user.
         // A second user's installation cannot stop or reveal this user's instance.
@@ -42,6 +54,10 @@ internal static class Program
             return;
         }
 
+        // O registro local só nasce na instância que fica aberta (a segunda só chama a primeira e sai).
+        using var log = new FileDiagnostics(FileDiagnostics.DefaultDirectory);
+        AppLog.Current = log;
+        log.Info($"{AppIdentity.Name} {AppIdentity.Version} iniciando (Windows {Environment.OSVersion.Version}, {(args.Contains("--background", StringComparer.OrdinalIgnoreCase) ? "em segundo plano" : "com janela")})");
         try
         {
             using var stop = new EventWaitHandle(false, EventResetMode.AutoReset, stopName);
@@ -50,9 +66,11 @@ internal static class Program
             using var context = new TrayContext(runtime, stop, show,
                 args.Contains("--background", StringComparer.OrdinalIgnoreCase));
             Application.Run(context);
+            log.Info("Encerrado normalmente");
         }
-        catch
+        catch (Exception error)
         {
+            log.Error("Não foi possível iniciar", error);
             // Never display exception details: SDK/HTTP messages can carry secrets.
             MessageBox.Show(
                 "Não foi possível iniciar o agente. Se os dados locais estiverem protegidos por outro usuário do Windows ou danificados, reinstale escolhendo explicitamente remover os dados e faça um novo pareamento. Nenhum dado foi apagado automaticamente.",
@@ -60,6 +78,8 @@ internal static class Program
         }
         finally
         {
+            log.Flush(TimeSpan.FromSeconds(2));
+            AppLog.Current = new NullAppDiagnostics();
             instance.ReleaseMutex();
         }
     }

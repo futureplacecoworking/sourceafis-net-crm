@@ -13,6 +13,8 @@ internal sealed class TrayContext : ApplicationContext
     private readonly RegisteredWaitHandle stopWait;
     private readonly RegisteredWaitHandle showWait;
     private readonly Task runTask;
+    private readonly LatestOnlyQueue<AgentSnapshot> snapshots;
+    private readonly UiWatchdog watchdog;
     private bool exiting;
     private bool disposed;
     private AgentStatus? previousStatus;
@@ -22,6 +24,9 @@ internal sealed class TrayContext : ApplicationContext
         this.runtime = runtime;
         form = new MainForm(runtime, lifetime.Token);
         _ = form.Handle;
+        // O leitor repete o estado a cada ciclo: a janela recebe só o mais recente, nunca uma fila de atualizações.
+        snapshots = new LatestOnlyQueue<AgentSnapshot>(OnUi, ApplySnapshot);
+        watchdog = new UiWatchdog(AppLog.Current, OnUi);
         menu = new ContextMenuStrip();
         menu.Items.Add("Abrir Central Biométrica", null, (_, _) => ShowForm());
         menu.Items.Add("Tela do cliente", null, (_, _) => form.ShowClientScreen());
@@ -44,6 +49,7 @@ internal sealed class TrayContext : ApplicationContext
             (_, _) => OnUi(ShowForm), null, Timeout.Infinite, false);
         ApplySnapshot(runtime.Snapshot);
         form.StartUpdateChecks();
+        watchdog.Start();
         runTask = Task.Run(() => RunAsync(lifetime.Token));
         if (!background)
             ShowForm();
@@ -65,7 +71,7 @@ internal sealed class TrayContext : ApplicationContext
         }
     }
 
-    private void RuntimeChanged(AgentSnapshot snapshot) => OnUi(() => ApplySnapshot(snapshot));
+    private void RuntimeChanged(AgentSnapshot snapshot) => snapshots.Submit(snapshot);
 
     // Som curto de ok ou de não, se a recepção deixou ligado em Configurações.
     private void RuntimeSignaled(AgentSignal signal) => OnUi(() =>
@@ -104,17 +110,19 @@ internal sealed class TrayContext : ApplicationContext
         form.BringToFront();
     }
 
-    private void OnUi(Action action)
+    private bool OnUi(Action action)
     {
         if (form.IsDisposed || !form.IsHandleCreated)
-            return;
+            return false;
         try
         {
             form.BeginInvoke(action);
+            return true;
         }
         catch (InvalidOperationException)
         {
             // Shutdown can dispose the window between this check and BeginInvoke.
+            return false;
         }
     }
 
@@ -144,6 +152,7 @@ internal sealed class TrayContext : ApplicationContext
         if (disposing && !disposed)
         {
             disposed = true;
+            watchdog.Dispose();
             lifetime.Cancel();
             stopWait.Unregister(null);
             showWait.Unregister(null);
