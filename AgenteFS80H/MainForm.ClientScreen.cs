@@ -10,14 +10,29 @@ internal sealed partial class MainForm
         if (exiting) return;
         if (clientScreen is null || clientScreen.IsDisposed)
         {
-            var window = new ClientScreenForm();
+            var window = new ClientScreenForm(ClientWebHostFactory);
             clientScreen = window;
-            window.FormClosed += (_, _) => { if (ReferenceEquals(clientScreen, window)) clientScreen = null; };
+            clientWebFailure = null;
+            window.WebUnavailable += reason => { if (!exiting && ReferenceEquals(clientScreen, window)) ShowClientWebFailure(reason); };
+            window.VisibleChanged += (_, _) => { if (!exiting) RenderChecklistNow(); };
+            window.FormClosed += (_, _) =>
+            {
+                if (!ReferenceEquals(clientScreen, window)) return;
+                clientScreen = null;
+                if (!exiting) RenderChecklistNow();
+            };
         }
         clientScreen.ShowSnapshot(displayedSnapshot ?? runtime.Snapshot);
+        clientScreen.Present(ClientScreenDestination());
+        RenderChecklistNow();
+    }
+
+    private Screen ClientScreenDestination()
+    {
         var current = Screen.FromControl(this);
-        var destination = Screen.AllScreens.FirstOrDefault(screen => screen.DeviceName != current.DeviceName) ?? current;
-        clientScreen.Present(destination);
+        var others = Screen.AllScreens.Where(screen => screen.DeviceName != current.DeviceName).ToArray();
+        // O monitor do cliente fica em pé (9:16) atrás do leitor; se houver um, ele tem preferência.
+        return others.FirstOrDefault(screen => screen.Bounds.Height > screen.Bounds.Width) ?? others.FirstOrDefault() ?? current;
     }
 
     private void CloseClientScreen()

@@ -8,6 +8,7 @@ internal sealed class TrayContext : ApplicationContext
     private readonly ContextMenuStrip menu;
     private readonly Icon normalIcon = CentralTheme.AppIcon();
     private readonly Icon warningIcon = (Icon)SystemIcons.Warning.Clone();
+    private readonly ReaderSounds sounds = new();
     private readonly CancellationTokenSource lifetime = new();
     private readonly RegisteredWaitHandle stopWait;
     private readonly RegisteredWaitHandle showWait;
@@ -36,6 +37,7 @@ internal sealed class TrayContext : ApplicationContext
         };
         tray.DoubleClick += (_, _) => ShowForm();
         runtime.Changed += RuntimeChanged;
+        runtime.Signaled += RuntimeSignaled;
         stopWait = ThreadPool.RegisterWaitForSingleObject(stop,
             (_, _) => OnUi(async () => await RequestExitAsync()), null, Timeout.Infinite, false);
         showWait = ThreadPool.RegisterWaitForSingleObject(show,
@@ -64,6 +66,12 @@ internal sealed class TrayContext : ApplicationContext
     }
 
     private void RuntimeChanged(AgentSnapshot snapshot) => OnUi(() => ApplySnapshot(snapshot));
+
+    // Som curto de ok ou de não, se a recepção deixou ligado em Configurações.
+    private void RuntimeSignaled(AgentSignal signal) => OnUi(() =>
+    {
+        if (!exiting && runtime.Configuration.SoundEnabled) sounds.Play(signal);
+    });
 
     private void ApplySnapshot(AgentSnapshot snapshot)
     {
@@ -124,6 +132,7 @@ internal sealed class TrayContext : ApplicationContext
         stopWait.Unregister(null);
         showWait.Unregister(null);
         runtime.Changed -= RuntimeChanged;
+        runtime.Signaled -= RuntimeSignaled;
         tray.Visible = false;
         form.AllowClose = true;
         form.Close();
@@ -139,8 +148,10 @@ internal sealed class TrayContext : ApplicationContext
             stopWait.Unregister(null);
             showWait.Unregister(null);
             runtime.Changed -= RuntimeChanged;
+            runtime.Signaled -= RuntimeSignaled;
             tray.Visible = false;
             tray.Dispose();
+            sounds.Dispose();
             menu.Dispose();
             form.AllowClose = true;
             form.Dispose();
