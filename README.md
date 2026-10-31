@@ -4,6 +4,9 @@ Este fork inclui um aplicativo de bandeja para Windows 10/11 x64, com captura Fu
 comparação SourceAFIS local e autorização pela Central de Operações.
 O app usa a identidade visual da Central, com páginas **Leitura** e **Configurações**,
 orientações de captura em destaque e fontes/arte incorporadas para uso offline da interface.
+A versão 1.4 cadastra o mesmo dedo 4 vezes (leitura ruim pede de novo, sem cancelar), mostra ao cliente a tela
+**Rastreio** no monitor em pé (etapas com ✓ e cartão de quem entra, pelo WebView2 do Windows) e protege o pareamento
+com LIMPAR/TROCAR, avisando a Central para não sobrar leitor fantasma.
 A **Central Biométrica** é instalada pelo [EXE oficial para Windows](https://github.com/futureplacecoworking/sourceafis-net-crm/releases/latest/download/Central-Biometrica-Setup.exe), com logo, progresso e atualização pelo próprio app. O workflow **Agente FS80H — Windows** valida e gera cada versão; consulte [o histórico](docs/ALTERACOES-CENTRAL-BIOMETRICA.md).
 [Instalação, pareamento e operação em português](docs/AGENTE-FS80H.md).
 Nenhuma fechadura é acionada nesta etapa. Driver e DLL oficiais são obtidos separadamente do fabricante.
