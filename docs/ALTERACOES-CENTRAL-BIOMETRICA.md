@@ -1,5 +1,20 @@
 # Versões da Central Biométrica
 
+## 1.5.0 — 31/10/2026
+
+As digitais agora ficam guardadas na Central:
+
+- **A Central guarda a cópia principal das digitais**, cifrada. Se o computador quebrar, for trocado ou for formatado, as
+  digitais voltam sozinhas da Central depois do pareamento: ninguém precisa cadastrar de novo. Este computador guarda só
+  uma cópia protegida para comparar rápido (a comparação continua sendo feita aqui, e a Central continua decidindo o
+  acesso).
+- Logo depois de cada cadastro, a digital é enviada à Central. Em segundo plano, a cada minuto, o programa confere o que
+  falta de cada lado: envia o que a Central ainda não tem e baixa o que este computador não tem. Nada disso atrasa as
+  leituras nem os cadastros.
+- Se a Central estiver fora do ar ou recusar o pedido, nada é apagado: o programa tenta de novo mais tarde. Uma Central
+  antiga, sem esse recurso, continua funcionando como antes.
+- Os textos de **TROCAR** e **LIMPAR** o pareamento e do desinstalador deixam de dizer que as digitais se perdem.
+
 ## 1.4.1 — 31/10/2026
 
 Ajuste para a janela não travar mais ao abrir **Configurações**:

@@ -1,6 +1,6 @@
 # Central Biométrica para Windows
 
-Aplicativo para Windows 10/11 de 64 bits, com ícone na bandeja, que captura digitais no Futronic FS80H e compara os templates com o SourceAFIS neste computador. A Central cadastra pessoas, decide a autorização com as regras atuais e registra os eventos. **Esta versão não aciona fechadura.** Uma autorização exibida não significa que uma porta abriu.
+Aplicativo para Windows 10/11 de 64 bits, com ícone na bandeja, que captura digitais no Futronic FS80H e compara os templates com o SourceAFIS neste computador. A **Central guarda a cópia principal das digitais** (cifrada); este computador guarda uma cópia protegida só para comparar rápido. A Central cadastra pessoas, decide a autorização com as regras atuais e registra os eventos. **Esta versão não aciona fechadura.** Uma autorização exibida não significa que uma porta abriu.
 
 ## Usar no dia a dia
 
@@ -85,7 +85,7 @@ O [fabricante especifica](https://www.futronic-tech.com/pro-detail.php?pro_id=15
 
 1. Na Central, um administrador humano abre **Digitais › Central biométrica**, cria o leitor e gera um código de pareamento temporário. Para trocar o PC de um leitor, o código pode dizer qual leitor ele substitui: o antigo é desligado sozinho quando o PC novo pareia.
 2. No aplicativo Windows, abra **Configurações** e informe a **URL HTTPS da Central**, como `https://central.futureplacecoworking.com.br`, e o **código de pareamento**. O aplicativo obtém a configuração pública da Central automaticamente; não é necessário procurar ou digitar chaves técnicas. Confirme o pareamento. Use apenas a Central da sua organização; o código é temporário e de uso único. Ao terminar, uma mensagem confirma o nome do leitor ("Pronto! Este computador está ligado à Central como «…»") e a página Leitura passa a mostrar esse nome.
-3. Se o computador **já estava pareado**, parear de novo pede para digitar **TROCAR**: as digitais deste computador são apagadas e a Central é avisada para desligar o leitor antigo. Assim não sobra leitor "fantasma" na Central.
+3. Se o computador **já estava pareado**, parear de novo pede para digitar **TROCAR**: a cópia das digitais deste computador é apagada e a Central é avisada para desligar o leitor antigo. Assim não sobra leitor "fantasma" na Central. As digitais que a Central já guarda para o leitor voltam sozinhas (veja "Cópia das digitais na Central").
 4. Na Central, o Administrador autoriza a pessoa e, em **Digitais › Central biométrica**, manda o pedido de cadastro para o leitor. O pedido vale por até 10 minutos e pode ser cancelado na Central.
 5. A pessoa coloca o **mesmo dedo** algumas vezes (4 na Central atual; 2 na Central antiga), levantando entre uma leitura e outra. Cada leitura nova precisa bater com uma anterior. Se o dedo mexer, sair cedo ou o aparelho falhar, a tela pede de novo, **sem cancelar o cadastro**. O pedido só falha por tempo esgotado, por digital que já é de outra pessoa neste leitor (a Central recebe qual cadastro já tem essa digital) ou depois de 15 tentativas. A recepção acompanha "Cadastrando Ana Souza — leitura 2 de 4" na janela principal.
 6. As regras de acesso (horário e validade) são da pessoa, na Central. Cadastrar uma digital, sozinho, não autoriza acesso: quem decide é a Central, na hora.
@@ -104,15 +104,25 @@ Se a rede cair, a Central ficar indisponível ou o leitor apresentar erro, o est
 
 Fechar a janela mantém o aplicativo na bandeja. Use o ícone para abrir o leitor, acessar as configurações ou encerrar o agente. A inicialização automática usa a chave de registro da conta atual `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, valor `FutureplaceAgenteFS80H`.
 
-Token de dispositivo e templates ficam cifrados com **DPAPI CurrentUser** em `%LOCALAPPDATA%\Futureplace\AgenteFS80H\data`. A proteção depende da conta Windows; os arquivos não são uma forma portável de backup e não devem ser enviados a suporte. Não copie imagens, templates, token ou pastas de dados para tickets, chats ou logs. Imagens de captura são transitórias.
+**A Central guarda a cópia mestra das digitais, cifrada** (desde a 1.5.0, quando a Central anuncia o recurso `digitais_no_banco`); este computador mantém só um cache protegido, usado para comparar na hora. A comparação continua local e a Central continua decidindo o acesso. Token de dispositivo e templates do cache ficam cifrados com **DPAPI CurrentUser** em `%LOCALAPPDATA%\Futureplace\AgenteFS80H\data`. A proteção depende da conta Windows; os arquivos não são uma forma portável de backup e não devem ser enviados a suporte. Não copie imagens, templates, token ou pastas de dados para tickets, chats ou logs. Imagens de captura são transitórias.
 
 A partir da 1.4.1 o programa mantém um **registro local de erros e travamentos** em `%LOCALAPPDATA%\Futureplace\AgenteFS80H\logs` (`agente.log` e `agente.1.log`, no máximo 512 KB cada; o mais antigo é descartado). Ele anota a abertura do programa e da versão, as páginas abertas, os erros inesperados (só o tipo do erro e o caminho no programa, nunca a mensagem) e, se a janela ficar mais de 3 segundos sem responder, quanto tempo durou e a última etapa. Não contém nomes, digitais, tokens, códigos nem endereços e fica separado da pasta `data`: pode ser anexado a um pedido de suporte.
 
 Revogue um cadastro ou o leitor pela Central. O bloqueio no servidor é imediato; quando o aplicativo sincroniza, apaga os templates locais removidos e confirma a exclusão à Central. Aguarde essa confirmação antes de desligar ou desinstalar o leitor. Um computador desligado não pode confirmar remoção física dos seus arquivos.
 
-**Limpar pareamento e digitais** (em Configurações) explica as consequências e pede para digitar **LIMPAR**. Primeiro as digitais saem deste computador; depois o programa avisa a Central, com o pareamento antigo, para desligar este leitor. Se a Central não responder (sem internet ou Central antiga), a limpeza local acontece do mesmo jeito e a janela pede para revogar o leitor em **Digitais › Central biométrica**.
+**Limpar pareamento e digitais** (em Configurações) explica as consequências e pede para digitar **LIMPAR**. Primeiro a cópia das digitais sai deste computador (a Central continua com a cópia principal); depois o programa avisa a Central, com o pareamento antigo, para desligar este leitor. Se a Central não responder (sem internet ou Central antiga), a limpeza local acontece do mesmo jeito e a janela pede para revogar o leitor em **Digitais › Central biométrica**.
 
 Para atualizar manualmente, execute o novo `Central-Biometrica-Setup.exe`. O instalador pede ao aplicativo que encerre, substitui o aplicativo e preserva os dados cifrados. Se o agente não encerrar, a atualização é interrompida: feche-o pela bandeja e tente novamente. O instalador não encerra processos à força.
+
+## Cópia das digitais na Central
+
+Desde a 1.5.0, com uma Central que anuncia `digitais_no_banco`, o programa trabalha em segundo plano, sem atrasar leituras nem cadastros:
+
+- logo depois de um cadastro concluído, envia as leituras daquela pessoa para a Central;
+- a cada minuto, pergunta à Central o que falta de cada lado (`estado_digitais`): envia o que a Central ainda não tem (`guardar_digital`) e baixa o que este computador não tem (`baixar_digitais`, em lotes de até 20), por exemplo num computador novo ou formatado. Cada digital baixada é conferida pelo SourceAFIS antes de entrar no cache;
+- se a Central recusar (por exemplo, sem a chave de cifra configurada, leitor não autenticado ou revogado) ou estiver fora do ar, nada é apagado nem alterado: o programa só tenta de novo mais tarde. Uma Central antiga, sem o recurso, continua funcionando como antes (digitais só neste computador).
+
+O registro local anota apenas a etapa e o tipo do erro, nunca digitais, nomes ou tokens. Revogar um cadastro continua apagando o cache local pelo mesmo caminho de sempre.
 
 ## Desinstalar
 

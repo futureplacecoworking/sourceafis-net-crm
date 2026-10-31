@@ -312,7 +312,7 @@ internal sealed partial class MainForm : Form
         sound.Margin = new Padding(0, 0, 0, 16);
         sound.CheckedChanged += SoundChanged;
         Add(preferences, sound);
-        Add(preferences, Wrap("As digitais e o pareamento ficam protegidos nesta conta do Windows. Limpar o pareamento pede para digitar LIMPAR, apaga as digitais deste computador e desliga o leitor também na Central."));
+        Add(preferences, Wrap("A Central guarda a cópia principal das digitais, cifrada. Este computador guarda só uma cópia protegida nesta conta do Windows para comparar rápido; se ele for trocado ou formatado, as digitais voltam da Central sozinhas. Limpar o pareamento pede para digitar LIMPAR, apaga a cópia deste computador e desliga o leitor também na Central."));
         clearButton.Click += async (_, _) => await ClearPairingAsync();
         Add(preferences, Buttons(clearButton));
         Add(stack, Card(preferences));

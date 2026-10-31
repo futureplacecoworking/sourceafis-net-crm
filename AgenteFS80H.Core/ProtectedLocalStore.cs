@@ -25,8 +25,9 @@ public sealed class ProtectedLocalStore(string directory) : ILocalStore
                 var template = Read<StoredTemplate>(file);
                 result.Add(template);
                 // Arquivos da 1.3 têm só `template`; os da 1.4 guardam as outras leituras boas em `extraTemplates`.
-                if (template.CadastroId != id || template.ComandoId == Guid.Empty || !ValidSample(template.Template) ||
-                    template.ExtraTemplates is { } extras && (extras.Length > EnrollmentCommand.MaximumReadings - 1 || !extras.All(ValidSample)))
+                // Digitais baixadas da Central (1.5) podem ter até 10 leituras e não têm comando de cadastro (ComandoId vazio).
+                if (template.CadastroId != id || !ValidSample(template.Template) ||
+                    template.ExtraTemplates is { } extras && (extras.Length > CentralClient.MaximumStoredReadings - 1 || !extras.All(ValidSample)))
                     throw new LocalDataException();
             }
             return result;
@@ -56,7 +57,8 @@ public sealed class ProtectedLocalStore(string directory) : ILocalStore
     }
     public void SaveTemplate(StoredTemplate template)
     {
-        if (template.CadastroId == Guid.Empty || template.ComandoId == Guid.Empty) throw new ArgumentException("Cadastro inválido.");
+        // ComandoId vazio = digital baixada da Central (não nasceu de um pedido deste PC).
+        if (template.CadastroId == Guid.Empty) throw new ArgumentException("Cadastro inválido.");
         Write(Path.Combine(Templates, template.CadastroId.ToString("N") + ".dpapi"), template);
     }
     public void DeleteTemplate(Guid id)

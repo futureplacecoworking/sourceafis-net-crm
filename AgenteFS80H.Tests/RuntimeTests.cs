@@ -671,6 +671,33 @@ public class RuntimeTests
             UnpairCalls++;
             return Task.FromResult(true);
         }
+        // Digitais na Central (recurso digitais_no_banco). Cada chamada fica registrada para os testes.
+        public DigitalStateResponse DigitalState { get; set; } = new();
+        public Dictionary<Guid, string[]> Downloadable { get; } = [];
+        public List<(Guid Id, string[] Readings)> Stored { get; } = [];
+        public List<Guid[]> DownloadRequests { get; } = [];
+        public int DigitalStateCalls => Volatile.Read(ref digitalStateCalls);
+        public bool FailDigitals { get; set; }
+        public Func<Task>? OnDigitalState { get; set; }
+        public async Task<DigitalStateResponse> DigitalStateAsync(CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref digitalStateCalls);
+            if (OnDigitalState is { } wait) await wait().ConfigureAwait(false);
+            return FailDigitals ? throw new CentralException("sem_chave") : DigitalState;
+        }
+        private int digitalStateCalls;
+        public Task StoreDigitalAsync(Guid enrollment, IReadOnlyList<string> readings, CancellationToken cancellationToken)
+        {
+            if (FailDigitals) throw new CentralException("sem_chave");
+            lock (Stored) Stored.Add((enrollment, readings.ToArray()));
+            return Task.CompletedTask;
+        }
+        public Task<DigitalDownload[]> DownloadDigitalsAsync(IReadOnlyCollection<Guid> enrollments, CancellationToken cancellationToken)
+        {
+            if (FailDigitals) throw new CentralException("sem_chave");
+            lock (DownloadRequests) DownloadRequests.Add(enrollments.ToArray());
+            return Task.FromResult(enrollments.Where(Downloadable.ContainsKey).Select(id => new DigitalDownload { CadastroId = id, Leituras = Downloadable[id] }).ToArray());
+        }
         public void Dispose() { }
     }
 }

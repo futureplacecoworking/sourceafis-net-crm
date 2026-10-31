@@ -81,6 +81,14 @@ public sealed class CentralClient : ICentralClient
     public const string FeatureDisplay = "exibir";
     public const string FeatureUnpair = "desparear";
     public const string FeatureDuplicateOf = "duplicada_de";
+    /// <summary>A Central guarda a cópia mestra das digitais (estado_digitais, guardar_digital e baixar_digitais).</summary>
+    public const string FeatureDigitalsInDatabase = "digitais_no_banco";
+    public const int DownloadBatchSize = 20;
+    public const int MaximumStoredReadings = 10;
+    /// <summary>Tamanho máximo de cada leitura em base64 aceito pela Central.</summary>
+    public const int MaximumReadingBase64Length = 32768;
+    // 20 cadastros x 10 leituras x 32 KB seria o teto absoluto; templates de verdade têm poucos KB.
+    private const int DownloadResponseLimit = 8 * 1024 * 1024;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
     private readonly AgentConfiguration configuration;
     private readonly HttpClient http;
@@ -175,6 +183,41 @@ public sealed class CentralClient : ICentralClient
         return true;
     }
 
+    public async Task<DigitalStateResponse> DigitalStateAsync(CancellationToken cancellationToken)
+    {
+        RequireDigitals();
+        var state = await SendAsync<DigitalStateResponse>("estado_digitais", new { }, cancellationToken).ConfigureAwait(false);
+        if (state.Enviar is null || state.Baixar is null || state.Enviar.Length > 5000 || state.Baixar.Length > 10000 ||
+            state.Enviar.Concat(state.Baixar).Any(id => id == Guid.Empty))
+            throw new CentralException("A Central devolveu um estado de digitais incompatível.");
+        return state;
+    }
+
+    public async Task StoreDigitalAsync(Guid enrollment, IReadOnlyList<string> readings, CancellationToken cancellationToken)
+    {
+        RequireDigitals();
+        if (enrollment == Guid.Empty || readings.Count is < 1 or > MaximumStoredReadings || readings.Any(text => text.Length is 0 or > MaximumReadingBase64Length))
+            throw new CentralException("As leituras a guardar na Central são inválidas.");
+        _ = await SendAsync<JsonElement>("guardar_digital", new { CadastroId = enrollment, Leituras = readings }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<DigitalDownload[]> DownloadDigitalsAsync(IReadOnlyCollection<Guid> enrollments, CancellationToken cancellationToken)
+    {
+        RequireDigitals();
+        if (enrollments.Count is < 1 or > DownloadBatchSize || enrollments.Any(id => id == Guid.Empty))
+            throw new CentralException("O pedido de digitais à Central é inválido.");
+        var response = await SendAsync<DigitalDownloadResponse>("baixar_digitais", new { Cadastros = enrollments }, cancellationToken, responseLimit: DownloadResponseLimit).ConfigureAwait(false);
+        if (response.Digitais is null || response.Digitais.Length > DownloadBatchSize || response.Digitais.Any(item => item is null || item.Leituras is null))
+            throw new CentralException("A Central devolveu digitais incompatíveis.");
+        return response.Digitais;
+    }
+
+    // A Central antiga recusaria a ação: nada novo sai antes de ela anunciar o recurso.
+    private void RequireDigitals()
+    {
+        if (!features.Contains(FeatureDigitalsInDatabase)) throw new CentralException("A Central não oferece o armazenamento de digitais.");
+    }
+
     private static string? SafeName(string? value)
     {
         var text = value?.Trim();
@@ -184,7 +227,7 @@ public sealed class CentralClient : ICentralClient
     internal static bool IsStableVersion(string? value) =>
         value is { Length: > 0 and <= 32 } && value.Split('.') is { Length: 3 } parts && parts.All(part => part.Length is > 0 and <= 5 && part.All(char.IsAsciiDigit));
 
-    private async Task<T> SendAsync<T>(string action, object data, CancellationToken cancellationToken, bool authenticated = true)
+    private async Task<T> SendAsync<T>(string action, object data, CancellationToken cancellationToken, bool authenticated = true, int responseLimit = 1024 * 1024)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(requestTimeout);
@@ -202,7 +245,7 @@ public sealed class CentralClient : ICentralClient
             throw new CentralException(response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden ? "A Central recusou a credencial deste leitor. Confira o pareamento ou a revogação." : "A Central não confirmou a operação. Nenhum acesso foi autorizado.");
         try
         {
-            var bytes = await ReadBoundedAsync(response.Content, 1024 * 1024, requestToken).ConfigureAwait(false);
+            var bytes = await ReadBoundedAsync(response.Content, responseLimit, requestToken).ConfigureAwait(false);
             using var document = JsonDocument.Parse(bytes);
             if (document.RootElement.GetProperty("ok").ValueKind != JsonValueKind.True) throw new JsonException();
             return JsonSerializer.Deserialize<T>(bytes, Json) ?? throw new JsonException();

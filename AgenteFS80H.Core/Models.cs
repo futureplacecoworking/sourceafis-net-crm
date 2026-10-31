@@ -225,6 +225,26 @@ public sealed record DecisionResponse
 /// <summary>Dados de `concluir`. Os campos novos só seguem quando a Central anuncia `duplicada_de`.</summary>
 public sealed record EnrollmentCompletion(Guid CommandId, string Result, string? Reason = null, Guid? DuplicateOf = null, int? Readings = null);
 
+/// <summary>Resposta de <c>estado_digitais</c>: o que este leitor deve mandar para a Central e o que pode baixar dela.</summary>
+public sealed record DigitalStateResponse
+{
+    public Guid[] Enviar { get; init; } = [];
+    public Guid[] Baixar { get; init; } = [];
+}
+
+/// <summary>Uma pessoa devolvida por <c>baixar_digitais</c>: as leituras vêm em base64 (templates SourceAFIS serializados).</summary>
+public sealed record DigitalDownload
+{
+    public Guid CadastroId { get; init; }
+    public string[] Leituras { get; init; } = [];
+    public override string ToString() => "Digital biométrica protegida";
+}
+
+public sealed record DigitalDownloadResponse
+{
+    public DigitalDownload[] Digitais { get; init; } = [];
+}
+
 public interface ICentralClient : IDisposable
 {
     /// <summary>Recursos anunciados na última sincronização bem-sucedida (vazio na Central antiga).</summary>
@@ -235,6 +255,12 @@ public interface ICentralClient : IDisposable
     Task ConfirmRemovalsAsync(IReadOnlyCollection<Guid> ids, bool all, CancellationToken cancellationToken);
     /// <summary>Avisa a Central que este leitor foi despareado. Devolve false quando a Central não oferece a ação.</summary>
     Task<bool> UnpairAsync(CancellationToken cancellationToken);
+    /// <summary><c>estado_digitais</c>: só existe quando a Central anuncia <see cref="CentralClient.FeatureDigitalsInDatabase"/>.</summary>
+    Task<DigitalStateResponse> DigitalStateAsync(CancellationToken cancellationToken);
+    /// <summary><c>guardar_digital</c>: manda as leituras (templates em base64) de um cadastro para a Central.</summary>
+    Task StoreDigitalAsync(Guid enrollment, IReadOnlyList<string> readings, CancellationToken cancellationToken);
+    /// <summary><c>baixar_digitais</c>: pede as leituras de até <see cref="CentralClient.DownloadBatchSize"/> cadastros.</summary>
+    Task<DigitalDownload[]> DownloadDigitalsAsync(IReadOnlyCollection<Guid> enrollments, CancellationToken cancellationToken);
 }
 public interface ILocalStore
 {
