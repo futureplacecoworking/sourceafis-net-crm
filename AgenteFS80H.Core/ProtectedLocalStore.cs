@@ -23,18 +23,21 @@ public sealed class ProtectedLocalStore(string directory) : ILocalStore
             {
                 if (!Guid.TryParseExact(Path.GetFileNameWithoutExtension(file), "N", out var id)) throw new LocalDataException();
                 var template = Read<StoredTemplate>(file);
-                if (template.CadastroId != id || template.ComandoId == Guid.Empty || template.Template is null || template.Template.Length is < 1 or > 1024 * 1024)
-                    throw new LocalDataException();
                 result.Add(template);
+                // Arquivos da 1.3 têm só `template`; os da 1.4 guardam as outras leituras boas em `extraTemplates`.
+                if (template.CadastroId != id || template.ComandoId == Guid.Empty || !ValidSample(template.Template) ||
+                    template.ExtraTemplates is { } extras && (extras.Length > EnrollmentCommand.MaximumReadings - 1 || !extras.All(ValidSample)))
+                    throw new LocalDataException();
             }
             return result;
         }
         catch
         {
-            foreach (var value in result) CryptographicOperations.ZeroMemory(value.Template);
+            foreach (var value in result) value.Clear();
             throw;
         }
     }
+    private static bool ValidSample(byte[]? sample) => sample is { Length: >= 1 and <= 1024 * 1024 };
     public IReadOnlyList<Guid> ListTemplateIds()
     {
         if (!Directory.Exists(Templates)) return [];
