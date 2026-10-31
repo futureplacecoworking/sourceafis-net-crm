@@ -11,6 +11,8 @@ internal sealed partial class MainForm : Form
     private readonly TextBox pairingCode = new() { Name = "pairingCode" };
     private readonly TextBox scannerPath = new() { Name = "scannerPath" };
     private readonly Label pairingState = TextLabel("");
+    private readonly Label pairingSummary = TextLabel("", 14, true);
+    private readonly Label pairingDetail = TextLabel("", 10);
     private readonly Label libraryState = TextLabel("");
     private readonly Label statusTitle = TextLabel("", 27, true);
     private readonly Label statusMessage = TextLabel("", 14);
@@ -26,6 +28,7 @@ internal sealed partial class MainForm : Form
     private readonly CentralButton clientScreenButton = new("Tela do cliente") { Name = "clientScreenButton" };
     private readonly CentralButton setupReader = new("Configurar leitor", ButtonTone.Primary) { Name = "setupReader" };
     private readonly CheckBox startup = new() { Name = "startup" };
+    private readonly CheckBox sound = new() { Name = "soundEnabled" };
     private readonly Panel readingPage = Page("readingPage");
     private readonly Panel settingsPage = Page("settingsPage");
     private readonly CentralCard setupGuide = new() { Name = "setupGuide", AutoSize = true, Dock = DockStyle.Top };
@@ -36,6 +39,7 @@ internal sealed partial class MainForm : Form
     private string? displayedCentralUrl;
     private bool busy;
     private bool changingStartup;
+    private bool changingSound;
     private bool startupAvailable = true;
     private bool exiting;
 
@@ -43,12 +47,23 @@ internal sealed partial class MainForm : Form
     public bool AllowClose { get; set; }
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Task PendingOperation { get; private set; } = Task.CompletedTask;
+    /// <summary>Cria a página nova da tela do cliente. Nulo = só a tela simples (usado nos testes, sem WebView2).</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal Func<IClientWebHost>? ClientWebHostFactory { get; set; } = () => new WebView2ClientHost();
+    /// <summary>Pede a palavra de confirmação (LIMPAR ou TROCAR). Os testes trocam a janela por uma resposta pronta.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal Func<TypedConfirmation, bool> ConfirmTyped { get; set; }
+    /// <summary>Avisa, em uma janela, que o pareamento deu certo.</summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal Action<string> NotifyPairing { get; set; }
 
     public MainForm(AgentRuntime runtime, CancellationToken lifetime, AppUpdateClient? updates = null)
     {
         this.runtime = runtime;
         this.lifetime = lifetime;
         appUpdates = updates ?? new AppUpdateClient();
+        ConfirmTyped = request => TypedConfirmationDialog.Ask(this, request);
+        NotifyPairing = text => MessageBox.Show(this, text, "Pareamento concluído", MessageBoxButtons.OK, MessageBoxIcon.Information);
         fingerprint.Image = readerImage;
         SuspendLayout();
         Text = AppIdentity.Name;
@@ -180,12 +195,15 @@ internal sealed partial class MainForm : Form
         card.Controls.Add(hero);
         Add(stack, card);
 
+        Add(stack, BuildConnectionCard());
+
         var setup = Stack();
         Add(setup, Wrap("Vamos preparar este computador", 15, true));
-        Add(setup, Wrap("Conecte à Central e selecione o arquivo do leitor em Configurações. O código de pareamento é gerado em Automação e sensores → Leitor da recepção."));
+        Add(setup, Wrap("Conecte à Central e selecione o arquivo do leitor em Configurações. O código de pareamento é gerado na Central em Digitais › Central biométrica."));
         Add(setup, Buttons(setupReader));
         setupGuide.Controls.Add(setup);
         Add(stack, setupGuide);
+        Add(stack, BuildChecklistCard());
 
         var help = new CentralCard { Dock = DockStyle.Fill, AutoSize = true };
         var guide = Stack();
@@ -193,8 +211,8 @@ internal sealed partial class MainForm : Form
         var steps = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Top, ColumnCount = 3, Margin = new Padding(0, 12, 0, 0) };
         steps.SuspendLayout();
         for (var i = 0; i < 3; i++) steps.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 3));
-        var titles = new[] { "1. Coloque o dedo", "2. Retire quando pedir", "3. Repita para confirmar" };
-        var copy = new[] { "Use o dedo já cadastrado no aparelho físico.", "Aguarde a orientação e retire completamente.", "Apresente o mesmo dedo e aguarde a decisão." };
+        var titles = new[] { "1. Coloque o dedo", "2. Aguarde a leitura", "3. Veja a resposta" };
+        var copy = new[] { "Use o dedo cadastrado e apoie bem no centro do FS80H.", "Mantenha o dedo parado até a tela dizer que pode tirar.", "A tela do cliente mostra cada etapa com ✓ e o cartão de quem entra." };
         for (var i = 0; i < 3; i++)
         {
             var step = Stack();
@@ -211,10 +229,10 @@ internal sealed partial class MainForm : Form
         Add(guide, steps);
         help.Controls.Add(guide);
         Add(stack, help);
-        var clientHint = Wrap("Tela do cliente abre uma apresentação separada no outro monitor, quando houver. F11 alterna a tela cheia; Esc fecha só a apresentação.");
+        var clientHint = Wrap("Tela do cliente abre uma apresentação separada no outro monitor (o monitor em pé atrás do leitor), quando houver. F11 alterna a tela cheia; Esc fecha só a apresentação.");
         clientHint.ForeColor = CentralTheme.Muted;
         Add(stack, clientHint);
-        var central = Wrap("Cadastre pessoas e configure os dias e horários na Central: Automação e sensores → Leitor da recepção.");
+        var central = Wrap("Autorize pessoas, peça cadastros e configure dias e horários na Central: Digitais › Central biométrica.");
         central.ForeColor = CentralTheme.Muted;
         Add(stack, central);
         readingPage.Controls.Add(stack);
@@ -250,7 +268,7 @@ internal sealed partial class MainForm : Form
         pairingCode.MaxLength = 128;
         pairingCode.UseSystemPasswordChar = true;
         Add(connection, pairingCode);
-        var pairingHint = Wrap("Gere o código em Automação e sensores → Leitor da recepção → Parear leitor. Cole o código aqui para conectar este PC.");
+        var pairingHint = Wrap("Gere o código na Central em Digitais › Central biométrica › Parear leitor. Cole o código aqui para conectar este PC.");
         pairingHint.ForeColor = CentralTheme.Muted;
         Add(connection, pairingHint);
         pairButton.Click += async (_, _) => await PairAsync();
@@ -279,7 +297,14 @@ internal sealed partial class MainForm : Form
         startup.Margin = new Padding(0, 8, 0, 16);
         startup.CheckedChanged += StartupChanged;
         Add(preferences, startup);
-        Add(preferences, Wrap("As digitais e o pareamento ficam protegidos nesta conta do Windows. Limpar o pareamento remove as digitais locais e exige uma nova configuração."));
+        sound.Text = "Som no leitor (bipe curto de ok e de não)";
+        sound.AutoSize = true;
+        sound.Font = CentralTheme.Body(11);
+        sound.UseCompatibleTextRendering = true;
+        sound.Margin = new Padding(0, 0, 0, 16);
+        sound.CheckedChanged += SoundChanged;
+        Add(preferences, sound);
+        Add(preferences, Wrap("As digitais e o pareamento ficam protegidos nesta conta do Windows. Limpar o pareamento pede para digitar LIMPAR, apaga as digitais deste computador e desliga o leitor também na Central."));
         clearButton.Click += async (_, _) => await ClearPairingAsync();
         Add(preferences, Buttons(clearButton));
         Add(stack, Card(preferences));
@@ -346,7 +371,8 @@ internal sealed partial class MainForm : Form
         actionMessage.MaximumSize = new Size(Math.Max(240, ClientSize.Width - 64), 0);
         var full = Math.Max(320, settingsPage.ClientSize.Width - 68);
         foreach (var label in wrappingLabels) label.MaximumSize = new Size(full, 0);
-        pairingState.MaximumSize = libraryState.MaximumSize = new Size(full, 0);
+        pairingState.MaximumSize = libraryState.MaximumSize = pairingSummary.MaximumSize = pairingDetail.MaximumSize = new Size(full, 0);
+        ResizeChecklist(full);
         var hero = Math.Max(280, readingPage.ClientSize.Width - 240);
         statusTitle.MaximumSize = statusMessage.MaximumSize = new Size(hero, 0);
     }
@@ -377,14 +403,76 @@ internal sealed partial class MainForm : Form
             displayedCentralUrl = configuration.CentralUrl;
         }
         scannerPath.Text = configuration.ScannerDllPath;
-        pairingState.Text = configuration.IsPaired ? "Computador pareado. Cadastros e horários são administrados pela Central." : "Pareamento pendente. Gere um código na Central para conectar este computador.";
         libraryState.Text = string.IsNullOrWhiteSpace(configuration.ScannerDllPath) ? "Arquivo de captura pendente." : "Arquivo de captura configurado. Mantenha-o na pasta selecionada.";
         setupGuide.Visible = !configuration.IsPaired || string.IsNullOrWhiteSpace(configuration.ScannerDllPath);
         changingStartup = true;
         try { startup.Checked = StartupRegistration.IsEnabled(); }
         catch { startupAvailable = false; startup.Enabled = false; }
         finally { changingStartup = false; }
+        changingSound = true;
+        try { sound.Checked = configuration.SoundEnabled; }
+        finally { changingSound = false; }
+        RenderConnection(displayedSnapshot ?? runtime.Snapshot);
         ReloadDiagnosticsConfiguration();
+        RenderChecklistNow();
+    }
+
+    private Control BuildConnectionCard()
+    {
+        var content = Stack();
+        pairingSummary.Name = "pairingSummary";
+        pairingSummary.AccessibleRole = AccessibleRole.StaticText;
+        pairingDetail.Name = "pairingDetail";
+        pairingDetail.ForeColor = CentralTheme.Muted;
+        pairingDetail.Margin = Padding.Empty;
+        Add(content, pairingSummary);
+        Add(content, pairingDetail);
+        var card = Card(content);
+        card.Name = "connectionCard";
+        return card;
+    }
+
+    /// <summary>Nome do leitor na Central, último contato e versão: a recepção sabe na hora se o PC está pareado.</summary>
+    private void RenderConnection(AgentSnapshot snapshot)
+    {
+        var configuration = runtime.Configuration;
+        string summary;
+        string detail;
+        Color tone;
+        if (!configuration.IsPaired)
+        {
+            summary = "Ainda não pareado";
+            detail = "Gere o código na Central em Digitais › Central biométrica e cole em Configurações.";
+            tone = CentralTheme.Warning;
+        }
+        else
+        {
+            summary = string.IsNullOrWhiteSpace(configuration.DeviceName) ? "Ligado à Central" : $"Ligado à Central como «{configuration.DeviceName}»";
+            if (snapshot.Status == AgentStatus.Revoked)
+            {
+                summary = "Leitor desligado pela Central";
+                detail = "Gere um novo código em Digitais › Central biométrica e pareie de novo.";
+                tone = CentralTheme.Danger;
+            }
+            else
+            {
+                detail = snapshot.LastContactAt is { } contact
+                    ? $"Último contato com a Central: {contact.ToLocalTime():HH:mm}"
+                    : "Ainda sem contato com a Central desde que o programa abriu.";
+                tone = snapshot.Status == AgentStatus.Offline || snapshot.LastContactAt is null ? CentralTheme.Warning : CentralTheme.Success;
+            }
+        }
+        detail += $" · Central Biométrica {AppIdentity.Version}";
+        SetText(pairingSummary, summary);
+        SetText(pairingDetail, detail);
+        pairingSummary.ForeColor = tone;
+        SetText(pairingState, summary + ". " + detail);
+    }
+
+    private static void SetText(Control control, string text)
+    {
+        // Evita redesenhar a cada ciclo do leitor quando nada mudou.
+        if (control.Text != text) control.Text = text;
     }
 
     public void ShowSnapshot(AgentSnapshot snapshot)
@@ -393,29 +481,70 @@ internal sealed partial class MainForm : Form
         displayedSnapshot = snapshot;
         UpdateDiagnostics(snapshot);
         if (clientScreen is { IsDisposed: false }) clientScreen.ShowSnapshot(snapshot);
-        statusTitle.Text = snapshot.Status == AgentStatus.Ready
-            ? snapshot.Message.StartsWith("Retire o dedo", StringComparison.Ordinal) ? "Retire o dedo do leitor"
-                : snapshot.Message.StartsWith("Digital cadastrada", StringComparison.Ordinal) ? "Digital cadastrada"
-                : snapshot.Message.StartsWith("Cadastro confirmado", StringComparison.Ordinal) ? "Cadastro confirmado" : "Coloque o dedo no leitor"
-            : StatusTitle(snapshot.Status);
-        var accent = snapshot.Status switch
+        SetText(statusTitle, ReadingTitle(snapshot));
+        var accent = snapshot switch
         {
-            AgentStatus.Authorized => CentralTheme.Success,
-            AgentStatus.Error or AgentStatus.Revoked => CentralTheme.Danger,
-            AgentStatus.Denied or AgentStatus.Offline => CentralTheme.Warning,
+            { Enrollment.Phase: EnrollmentPhase.Completed } => CentralTheme.Success,
+            { Enrollment.Phase: EnrollmentPhase.Failed or EnrollmentPhase.Cancelled or EnrollmentPhase.BadReading } => CentralTheme.Warning,
+            { Enrollment: not null } => CentralTheme.Primary,
+            { Status: AgentStatus.Authorized } => CentralTheme.Success,
+            { Status: AgentStatus.Error or AgentStatus.Revoked } => CentralTheme.Danger,
+            { Status: AgentStatus.Denied or AgentStatus.Offline } => CentralTheme.Warning,
             _ => CentralTheme.Primary
         };
         statusTitle.ForeColor = accent;
         statusCaption.ForeColor = accent;
-        statusMessage.Text = snapshot.Message;
-        statusCaption.Text = snapshot.Status switch
+        SetText(statusMessage, snapshot.Message);
+        SetText(statusCaption, snapshot switch
         {
-            AgentStatus.Capturing => "ACOMPANHE A LEITURA",
-            AgentStatus.Authorized or AgentStatus.Denied => "DECISÃO DA CENTRAL",
-            AgentStatus.Offline or AgentStatus.Revoked or AgentStatus.Error => "LEITOR PRECISA DE ATENÇÃO",
-            AgentStatus.Ready => "LEITURA AUTOMÁTICA",
+            { Enrollment: not null } => "CADASTRO DE DIGITAL",
+            { Identification.Result: IdentificationResult.NotRecognized or IdentificationResult.BadReading } => "LEITURA NESTE COMPUTADOR",
+            { Status: AgentStatus.Capturing } => "ACOMPANHE A LEITURA",
+            { Status: AgentStatus.Authorized or AgentStatus.Denied } => "DECISÃO DA CENTRAL",
+            { Status: AgentStatus.Offline or AgentStatus.Revoked or AgentStatus.Error } => "LEITOR PRECISA DE ATENÇÃO",
+            { Status: AgentStatus.Ready } => "LEITURA AUTOMÁTICA",
             _ => "LEITOR DA RECEPÇÃO"
-        };
+        });
+        RenderConnection(snapshot);
+        RenderChecklist(snapshot);
+    }
+
+    /// <summary>Título da página Leitura, a partir do andamento estruturado (sem ler o texto da mensagem).</summary>
+    internal static string ReadingTitle(AgentSnapshot snapshot)
+    {
+        if (snapshot.Enrollment is { } enrollment)
+        {
+            var who = string.IsNullOrWhiteSpace(enrollment.Name) ? "digital" : enrollment.Name;
+            return enrollment.Phase switch
+            {
+                EnrollmentPhase.Completed => string.IsNullOrWhiteSpace(enrollment.Name) ? "Digital cadastrada" : $"Digital de {enrollment.Name} cadastrada",
+                EnrollmentPhase.Failed => string.IsNullOrWhiteSpace(enrollment.Name) ? "Cadastro não concluído" : $"Cadastro de {enrollment.Name} não concluído",
+                EnrollmentPhase.Cancelled => "Cadastro cancelado na Central",
+                EnrollmentPhase.Checking => $"Cadastrando {who} — conferindo as leituras",
+                _ => $"Cadastrando {who} — leitura {enrollment.Reading} de {enrollment.Total}"
+            };
+        }
+        if (snapshot.Identification is { } identification)
+            return identification.Result switch
+            {
+                IdentificationResult.InProgress => identification.Completed switch
+                {
+                    0 => "Lendo a digital…",
+                    1 => "Reconhecendo a pessoa…",
+                    _ => "Consultando a Central…"
+                },
+                IdentificationResult.Authorized => string.IsNullOrWhiteSpace(identification.Name) ? "Autorizado pela Central" : $"Autorizado pela Central: {identification.Name}",
+                IdentificationResult.NotRecognized => "Digital não reconhecida",
+                IdentificationResult.BadReading => "Leitura ruim: peça para tentar de novo",
+                _ => "Acesso não autorizado"
+            };
+        if (snapshot.Status != AgentStatus.Ready) return StatusTitle(snapshot.Status);
+        if (snapshot.Hint == ReaderHint.LiftFinger) return "Retire o dedo do leitor";
+        if (snapshot.Hint == ReaderHint.PlaceFinger) return "Coloque o dedo no leitor";
+        // Estados antigos, sem andamento estruturado.
+        return snapshot.Message.StartsWith("Retire o dedo", StringComparison.Ordinal) ? "Retire o dedo do leitor"
+            : snapshot.Message.StartsWith("Digital cadastrada", StringComparison.Ordinal) ? "Digital cadastrada"
+            : snapshot.Message.StartsWith("Cadastro confirmado", StringComparison.Ordinal) ? "Cadastro confirmado" : "Coloque o dedo no leitor";
     }
 
     internal static string StatusTitle(AgentStatus status) => status switch
@@ -452,7 +581,9 @@ internal sealed partial class MainForm : Form
         CloseClientScreen();
         SetInputsEnabled(false);
         foreach (var button in new[] { navigationReading, navigationSettings, openCentralButton, clientScreenButton, setupReader }) button.Enabled = false;
+        foreach (var row in checklist.Values) row.Action.Enabled = false;
         startup.Enabled = false;
+        sound.Enabled = false;
         statusTitle.Text = "Encerrando leitor…";
         statusMessage.Text = "Aguardando o leitor e a Central encerrarem as operações.";
     }

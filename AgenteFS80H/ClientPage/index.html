@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Página local da tela do cliente. Nada vem da internet, a não ser a foto do cadastro (só storage.googleapis.com). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' https://storage.googleapis.com; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Central Biométrica — Cliente</title>
+<link rel="stylesheet" href="cliente.css">
+<script src="cliente.js" defer></script>
+</head>
+<body>
+<main class="tela" id="tela" data-fase="espera" aria-live="polite"></main>
+</body>
+</html>

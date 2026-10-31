@@ -13,7 +13,7 @@ internal sealed class UiFixture : IDisposable
     public readonly AgentRuntime Runtime;
     public readonly MainForm Form;
 
-    public UiFixture(bool paired = true, bool scanner = true, AppUpdateClient? updates = null)
+    public UiFixture(bool paired = true, bool scanner = true, AppUpdateClient? updates = null, Func<AgentConfiguration, ICentralClient>? central = null, string deviceName = "")
     {
         Store = new MemoryStore(new AgentState
         {
@@ -24,15 +24,22 @@ internal sealed class UiFixture : IDisposable
                 PublicApiKey = SyntheticKey,
                 DeviceId = paired ? Guid.Parse("10000000-0000-0000-0000-000000000001") : Guid.Empty,
                 DeviceToken = paired ? SyntheticToken : "",
-                ScannerDllPath = scanner ? @"C:\Futronic\ftrScanAPI.dll" : ""
+                ScannerDllPath = scanner ? @"C:\Futronic\ftrScanAPI.dll" : "",
+                DeviceName = deviceName
             }
         });
         Runtime = new AgentRuntime(Store,
-            _ => throw new AssertionException("A UI de teste não pode iniciar comunicação com a Central."),
+            central ?? (_ => throw new AssertionException("A UI de teste não pode iniciar comunicação com a Central.")),
             _ => throw new AssertionException("A UI de teste não pode carregar um leitor físico."),
             new UnusedRecognizer(), TimeProvider.System);
         TestContext.Progress.WriteLine($"UI {TestContext.CurrentContext.Test.Name}: criar janela");
-        Form = new MainForm(Runtime, CancellationToken.None, updates);
+        Form = new MainForm(Runtime, CancellationToken.None, updates)
+        {
+            // Sem WebView2 nos testes: a tela do cliente usa a versão simples, que não depende do runtime do Edge.
+            ClientWebHostFactory = null,
+            ConfirmTyped = request => throw new AssertionException($"Confirmação inesperada: {request.Word}."),
+            NotifyPairing = _ => { }
+        };
         TestContext.Progress.WriteLine($"UI {TestContext.CurrentContext.Test.Name}: mostrar janela");
         Form.Show();
         Pump();
@@ -55,6 +62,12 @@ internal sealed class UiFixture : IDisposable
     public void Snapshot(AgentStatus status, string message)
     {
         Form.ShowSnapshot(new AgentSnapshot(status, message));
+        Pump();
+    }
+
+    public void Snapshot(AgentSnapshot snapshot)
+    {
+        Form.ShowSnapshot(snapshot);
         Pump();
     }
 
@@ -92,7 +105,7 @@ internal sealed class UiFixture : IDisposable
         public int Writes { get; private set; }
         public AgentState LoadState() => state;
         public void SaveState(AgentState value) { Writes++; state = value; }
-        public IReadOnlyList<StoredTemplate> LoadTemplates() => hasTemplate ? [template] : [];
+        public IReadOnlyList<StoredTemplate> LoadTemplates() => hasTemplate ? [template with { Template = (byte[])template.Template.Clone() }] : [];
         public IReadOnlyList<Guid> ListTemplateIds() => hasTemplate ? [template.CadastroId] : [];
         public void DeleteAllTemplates() { Writes++; hasTemplate = false; }
         public void SaveTemplate(StoredTemplate value) => throw new AssertionException("Navegação não cadastra digital.");
@@ -103,6 +116,6 @@ internal sealed class UiFixture : IDisposable
     private sealed class UnusedRecognizer : IFingerprintRecognizer
     {
         public byte[] Extract(FingerprintFrame image) => throw new AssertionException("A UI não captura imagens.");
-        public double Score(byte[] probe, byte[] candidate) => throw new AssertionException("A UI não compara digitais.");
+        public IFingerprintMatcher Matcher(byte[] probe) => throw new AssertionException("A UI não compara digitais.");
     }
 }

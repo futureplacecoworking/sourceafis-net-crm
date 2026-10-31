@@ -2,23 +2,37 @@ namespace Futureplace.AgenteFS80H.Desktop;
 
 internal enum ClientMotion { Waiting, Reading, Confirmed, Attention, Unavailable }
 
-/// <summary>Public copy is allowlisted: runtime messages, names and configuration never reach the customer display.</summary>
+/// <summary>
+/// Tela simples do cliente (sem WebView2). Os textos são escolhidos aqui: mensagens internas, nomes e configuração
+/// nunca chegam a ela.
+/// </summary>
 internal sealed record ClientPresentation(string Caption, string Title, string Instruction,
     Color Accent, ClientMotion Motion, string? Welcome = null)
 {
-    private static readonly TimeZoneInfo Brasilia = TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time");
-
     public static ClientPresentation From(AgentSnapshot snapshot, DateTimeOffset now)
     {
+        if (snapshot.Enrollment is { } enrollment) return Enrollment(enrollment);
+        if (snapshot.Identification is { } identification && identification.Result != IdentificationResult.Authorized)
+        {
+            var page = ClientPage.From(snapshot, now);
+            return identification.Result switch
+            {
+                IdentificationResult.InProgress => new("ACOMPANHE A LEITURA", page.Tit, page.Txt, CentralTheme.Primary, ClientMotion.Reading),
+                IdentificationResult.NotRecognized => new("PROCURE A RECEPÇÃO", "Digital não reconhecida", page.Txt, CentralTheme.Warning, ClientMotion.Attention),
+                IdentificationResult.BadReading => new("TENTE DE NOVO", "Não deu para ler", page.Txt, CentralTheme.Warning, ClientMotion.Attention),
+                _ => new("PROCURE A RECEPÇÃO", "Acesso não autorizado", page.Txt, CentralTheme.Warning, ClientMotion.Attention)
+            };
+        }
         if (snapshot.Status == AgentStatus.Authorized)
         {
-            var hour = TimeZoneInfo.ConvertTime(now, Brasilia).Hour;
-            var greeting = hour is >= 6 and < 12 ? "Bom dia!" : hour is >= 12 and < 18 ? "Boa tarde!" : "Boa noite!";
+            var greeting = ClientPage.Greeting(now) + "!";
             return new("IDENTIFICAÇÃO AUTORIZADA", greeting, "Aguarde a recepcionista para entrar.",
                 CentralTheme.Success, ClientMotion.Confirmed, "Seja bem-vindo ao Future Place!");
         }
         if (snapshot.Status == AgentStatus.Ready)
         {
+            if (snapshot.Hint == ReaderHint.LiftFinger) return Lift();
+            if (snapshot.Hint == ReaderHint.PlaceFinger) return Place();
             if (snapshot.Message.StartsWith("Retire o dedo", StringComparison.Ordinal)) return Lift();
             if (snapshot.Message.StartsWith("Digital cadastrada", StringComparison.Ordinal)
                 || snapshot.Message.StartsWith("Cadastro confirmado", StringComparison.Ordinal))
@@ -38,6 +52,20 @@ internal sealed record ClientPresentation(string Caption, string Title, string I
             AgentStatus.Connecting => new("SÓ UM INSTANTE", "Preparando o leitor", "Aguarde. A recepcionista pode ajudar se precisar.", CentralTheme.Primary, ClientMotion.Waiting),
             AgentStatus.Denied => new("PROCURE A RECEPÇÃO", "Acesso não autorizado", "Fale com a recepcionista para verificar seu acesso.", CentralTheme.Warning, ClientMotion.Attention),
             _ => new("PROCURE A RECEPÇÃO", "Leitor indisponível", "Fale com a recepcionista para continuar.", CentralTheme.Warning, ClientMotion.Unavailable)
+        };
+    }
+
+    private static ClientPresentation Enrollment(EnrollmentProgress progress)
+    {
+        var page = ClientPage.Enrollment(progress);
+        // O nome de quem cadastra não aparece na tela simples; só o andamento.
+        var title = progress.Phase == EnrollmentPhase.Place && progress.Good == 0 ? "Coloque o dedo no leitor" : page.Tit;
+        return progress.Phase switch
+        {
+            EnrollmentPhase.Completed => new("CADASTRO CONCLUÍDO", "Digital cadastrada", "A recepcionista vai orientar os próximos passos.", CentralTheme.Success, ClientMotion.Confirmed, page.LeitN),
+            EnrollmentPhase.Failed or EnrollmentPhase.Cancelled => new("CADASTRO DA DIGITAL", title, page.Txt, CentralTheme.Warning, ClientMotion.Attention),
+            EnrollmentPhase.BadReading => new("CADASTRO DA DIGITAL", title, page.Txt, CentralTheme.Warning, ClientMotion.Reading, page.LeitN),
+            _ => new("CADASTRO DA DIGITAL", title, page.Txt, CentralTheme.Primary, ClientMotion.Reading, page.LeitN)
         };
     }
 

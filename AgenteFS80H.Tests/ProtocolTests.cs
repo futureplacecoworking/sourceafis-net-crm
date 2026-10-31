@@ -59,11 +59,162 @@ public class ProtocolTests
             payload = await request.Content!.ReadAsStringAsync();
             return Json("{\"ok\":true}");
         }));
-        await client.CompleteAsync(Guid.NewGuid(), "cadastrado", null, CancellationToken.None);
+        await client.CompleteAsync(new EnrollmentCompletion(Guid.NewGuid(), "cadastrado"), CancellationToken.None);
         using var json = JsonDocument.Parse(payload!);
         var data = json.RootElement.GetProperty("dados");
         Assert.That(data.GetProperty("resultado").GetString(), Is.EqualTo("cadastrado"));
         Assert.That(data.TryGetProperty("motivo", out _), Is.False);
+    }
+
+    private const string OldSync = "{\"ok\":true,\"protocolo\":1,\"servidor_em\":\"SERVER\",\"revogado\":false,\"cadastros\":[],\"comando\":null}";
+    private const string NewSync = "{\"ok\":true,\"protocolo\":1,\"servidor_em\":\"SERVER\",\"revogado\":false,\"cadastros\":[],\"comando\":null," +
+        "\"recursos\":[\"versao\",\"leituras_multiplas\",\"exibir\",\"desparear\",\"duplicada_de\"],\"dispositivo\":{\"id\":\"10000000-0000-0000-0000-000000000001\",\"nome\":\"Recepção — FS80H\"},\"fechadura_instalada\":false,\"campo_futuro\":{\"x\":1}}";
+    private static string Now(string body) => body.Replace("SERVER", DateTimeOffset.UtcNow.ToString("O"));
+
+    private static (CentralClient Client, List<(string Action, JsonElement Data)> Requests) Recording(Func<string, string> respond)
+    {
+        var requests = new List<(string, JsonElement)>();
+        var client = new CentralClient(Configuration, new Handler(async request =>
+        {
+            using var document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            var action = document.RootElement.GetProperty("acao").GetString()!;
+            requests.Add((action, document.RootElement.GetProperty("dados").Clone()));
+            return Json(respond(action));
+        }), appVersion: "1.4.0");
+        return (client, requests);
+    }
+
+    [Test]
+    public async Task OldCentralNeverReceivesFieldsItWouldRejectWithHttp400()
+    {
+        var (client, requests) = Recording(action => action == "sincronizar" ? Now(OldSync) : "{\"ok\":true}");
+        using (client)
+        {
+            await client.SynchronizeAsync(CancellationToken.None);
+            await client.SynchronizeAsync(CancellationToken.None);
+            await client.CompleteAsync(new EnrollmentCompletion(Guid.NewGuid(), "falhou", "duplicada", Guid.NewGuid(), 4), CancellationToken.None);
+            Assert.That(await client.UnpairAsync(CancellationToken.None), Is.False);
+        }
+        Assert.That(requests.Select(r => r.Action), Is.EqualTo(new[] { "sincronizar", "sincronizar", "concluir" }), "Sem `desparear` para a Central antiga.");
+        Assert.That(requests[0].Data.EnumerateObject(), Is.Empty);
+        Assert.That(requests[1].Data.EnumerateObject(), Is.Empty);
+        Assert.That(requests[2].Data.EnumerateObject().Select(p => p.Name), Is.EquivalentTo(new[] { "comando_id", "resultado", "motivo" }));
+        Assert.That(client.Features, Is.Empty);
+    }
+
+    [Test]
+    public async Task NewCentralGetsVersionReadingsAndUnpairOnlyAfterAnnouncingThem()
+    {
+        var other = Guid.NewGuid();
+        var (client, requests) = Recording(action => action == "sincronizar" ? Now(NewSync) : "{\"ok\":true}");
+        using (client)
+        {
+            var first = await client.SynchronizeAsync(CancellationToken.None);
+            Assert.That(first.Dispositivo?.Nome, Is.EqualTo("Recepção — FS80H"));
+            Assert.That(first.FechaduraInstalada, Is.False);
+            await client.SynchronizeAsync(CancellationToken.None);
+            await client.CompleteAsync(new EnrollmentCompletion(Guid.NewGuid(), "falhou", "duplicada", other), CancellationToken.None);
+            await client.CompleteAsync(new EnrollmentCompletion(Guid.NewGuid(), "cadastrado", Readings: 4), CancellationToken.None);
+            Assert.That(await client.UnpairAsync(CancellationToken.None), Is.True);
+        }
+        Assert.That(requests.Select(r => r.Action), Is.EqualTo(new[] { "sincronizar", "sincronizar", "concluir", "concluir", "desparear" }));
+        Assert.That(requests[0].Data.EnumerateObject(), Is.Empty, "A primeira sincronização ainda não sabe o que a Central entende.");
+        Assert.That(requests[1].Data.GetProperty("versao").GetString(), Is.EqualTo("1.4.0"));
+        Assert.That(requests[1].Data.EnumerateObject().Count(), Is.EqualTo(1));
+        Assert.That(requests[2].Data.GetProperty("duplicada_de").GetGuid(), Is.EqualTo(other));
+        Assert.That(requests[2].Data.TryGetProperty("leituras", out _), Is.False);
+        Assert.That(requests[3].Data.GetProperty("leituras").GetInt32(), Is.EqualTo(4));
+        Assert.That(requests[3].Data.TryGetProperty("duplicada_de", out _), Is.False);
+        Assert.That(requests[4].Data.EnumerateObject(), Is.Empty);
+    }
+
+    [Test]
+    public async Task AFailedSynchronizationForgetsTheAnnouncedFeatures()
+    {
+        var fail = false;
+        var requests = new List<string>();
+        using var client = new CentralClient(Configuration, new Handler(async request =>
+        {
+            requests.Add(await request.Content!.ReadAsStringAsync());
+            return fail ? new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent("{\"ok\":false,\"erro\":\"campo desconhecido\"}") } : Json(Now(NewSync));
+        }), appVersion: "1.4.0");
+        await client.SynchronizeAsync(CancellationToken.None);
+        fail = true;
+        Assert.ThrowsAsync<CentralException>(async () => await client.SynchronizeAsync(CancellationToken.None));
+        fail = false;
+        await client.SynchronizeAsync(CancellationToken.None);
+        Assert.That(requests[1], Does.Contain("\"versao\":\"1.4.0\""));
+        Assert.That(requests[2], Does.Not.Contain("versao"), "Depois de uma recusa, volta a mandar só o que a Central antiga aceita.");
+    }
+
+    [Test]
+    public async Task EnrollmentCommandMayLastTenMinutesAndCarriesCompanyAndReadings()
+    {
+        var server = DateTimeOffset.UtcNow;
+        var cadastro = Guid.NewGuid();
+        var body = "{\"ok\":true,\"protocolo\":1,\"servidor_em\":\"" + server.ToString("O") + "\",\"revogado\":false,\"cadastros\":[\"" + cadastro + "\"],"
+            + "\"comando\":{\"id\":\"" + Guid.NewGuid() + "\",\"tipo\":\"cadastrar\",\"cadastro_id\":\"" + cadastro + "\",\"nome\":\"Ana Souza\",\"empresa\":\"Inova Tecnologia\",\"leituras\":4,"
+            + "\"expira_em\":\"" + server.AddMinutes(10).ToString("O") + "\",\"desconhecido\":true}}";
+        using var client = new CentralClient(Configuration, new Handler(_ => Task.FromResult(Json(body))));
+        var sync = await client.SynchronizeAsync(CancellationToken.None);
+        Assert.That(sync.Comando!.Empresa, Is.EqualTo("Inova Tecnologia"));
+        Assert.That(sync.Comando.RequiredReadings, Is.EqualTo(4));
+        Assert.That(new EnrollmentCommand { Leituras = null }.RequiredReadings, Is.EqualTo(2));
+        Assert.That(new EnrollmentCommand { Leituras = 1 }.RequiredReadings, Is.EqualTo(2));
+        Assert.That(new EnrollmentCommand { Leituras = 50 }.RequiredReadings, Is.EqualTo(6));
+    }
+
+    [Test]
+    public void EnrollmentCommandLongerThanTenMinutesIsRejected()
+    {
+        var server = DateTimeOffset.UtcNow;
+        var cadastro = Guid.NewGuid();
+        var body = "{\"ok\":true,\"protocolo\":1,\"servidor_em\":\"" + server.ToString("O") + "\",\"revogado\":false,\"cadastros\":[\"" + cadastro + "\"],"
+            + "\"comando\":{\"id\":\"" + Guid.NewGuid() + "\",\"tipo\":\"cadastrar\",\"cadastro_id\":\"" + cadastro + "\",\"nome\":\"Ana\",\"expira_em\":\"" + server.AddMinutes(11).ToString("O") + "\"}}";
+        using var client = new CentralClient(Configuration, new Handler(_ => Task.FromResult(Json(body))));
+        Assert.ThrowsAsync<CentralException>(async () => await client.SynchronizeAsync(CancellationToken.None));
+    }
+
+    [Test]
+    public async Task IdentificationReadsTheOptionalCardAndIgnoresUnknownOrInvalidFields()
+    {
+        const string card = "{\"ok\":true,\"autorizado\":true,\"motivo\":\"permitido\",\"nome\":\"Ana Souza\",\"porta_acionada\":false,\"novo\":1,"
+            + "\"exibir\":{\"nome\":\"Ana Souza\",\"primeiro_nome\":\"Ana\",\"empresa\":\"Inova Tecnologia\",\"sala\":\"Milão\",\"codigo\":128,"
+            + "\"validade\":\"2026-12-31\",\"validade_texto\":null,\"foto\":\"https://storage.googleapis.com/fotos/ana.jpg\",\"horario_texto\":\"segunda a sexta, 8h às 20h\",\"extra\":[1]}}";
+        using (var client = new CentralClient(Configuration, new Handler(_ => Task.FromResult(Json(card)))))
+        {
+            var decision = await client.IdentifyAsync(Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.That(decision.Display, Is.EqualTo(new DisplayInfo
+            {
+                Nome = "Ana Souza", PrimeiroNome = "Ana", Empresa = "Inova Tecnologia", Sala = "Milão", Codigo = "128",
+                Validade = "2026-12-31", Foto = "https://storage.googleapis.com/fotos/ana.jpg", HorarioTexto = "segunda a sexta, 8h às 20h"
+            }));
+        }
+        foreach (var response in new[]
+        {
+            "{\"ok\":true,\"autorizado\":false,\"motivo\":\"horario\",\"nome\":\"Pessoa\",\"porta_acionada\":false}",
+            "{\"ok\":true,\"autorizado\":false,\"motivo\":\"horario\",\"nome\":\"Pessoa\",\"porta_acionada\":false,\"exibir\":null}",
+            "{\"ok\":true,\"autorizado\":false,\"motivo\":\"horario\",\"nome\":\"Pessoa\",\"porta_acionada\":false,\"exibir\":\"texto\"}",
+            "{\"ok\":true,\"autorizado\":false,\"motivo\":\"horario\",\"nome\":\"Pessoa\",\"porta_acionada\":false,\"exibir\":{\"nome\":7,\"foto\":true}}"
+        })
+        {
+            using var client = new CentralClient(Configuration, new Handler(_ => Task.FromResult(Json(response))));
+            var decision = await client.IdentifyAsync(Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow, CancellationToken.None);
+            Assert.That(decision.Display?.Foto, Is.Null);
+            Assert.That(decision.Autorizado, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task PairingReturnsTheReaderNameWhenTheCentralSendsIt()
+    {
+        const string body = "{\"ok\":true,\"protocolo\":1,\"token\":\"opaque-device-token-0123456789\",\"dispositivo_id\":\"10000000-0000-0000-0000-000000000001\",\"nome\":\"Recepção — FS80H\"}";
+        using var client = new CentralClient(new AgentConfiguration { ProjectUrl = "https://project.supabase.co", PublicApiKey = "sb_publishable_test" }, new Handler(_ => Task.FromResult(Json(body))));
+        var result = await client.PairAsync("codigo", CancellationToken.None);
+        Assert.That(result.Nome, Is.EqualTo("Recepção — FS80H"));
+        using var old = new CentralClient(new AgentConfiguration { ProjectUrl = "https://project.supabase.co", PublicApiKey = "sb_publishable_test" },
+            new Handler(_ => Task.FromResult(Json(body.Replace(",\"nome\":\"Recepção — FS80H\"", "")))));
+        Assert.That((await old.PairAsync("codigo", CancellationToken.None)).Nome, Is.Null);
     }
 
     [Test]

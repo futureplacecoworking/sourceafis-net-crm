@@ -46,7 +46,7 @@ internal static class Program
         {
             using var stop = new EventWaitHandle(false, EventResetMode.AutoReset, stopName);
             using var show = new EventWaitHandle(false, EventResetMode.AutoReset, showName);
-            using var runtime = AgentRuntime.CreateDefault();
+            using var runtime = AgentRuntime.CreateDefault(AppIdentity.Version);
             using var context = new TrayContext(runtime, stop, show,
                 args.Contains("--background", StringComparer.OrdinalIgnoreCase));
             Application.Run(context);

@@ -76,19 +76,33 @@ public sealed class CentralClient : ICentralClient
 {
     // 500 UUIDs excedem o limite HTTP de 16 KiB do Edge. 400 deixam margem para o envelope JSON.
     public const int RemovalBatchSize = 400;
+    public const string FeatureVersion = "versao";
+    public const string FeatureMultipleReadings = "leituras_multiplas";
+    public const string FeatureDisplay = "exibir";
+    public const string FeatureUnpair = "desparear";
+    public const string FeatureDuplicateOf = "duplicada_de";
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
     private readonly AgentConfiguration configuration;
     private readonly HttpClient http;
     private readonly Uri endpoint;
     private readonly TimeSpan requestTimeout;
+    private readonly string? appVersion;
+    private HashSet<string> features = new(StringComparer.Ordinal);
 
-    public CentralClient(AgentConfiguration configuration, HttpMessageHandler? handler = null, TimeSpan? requestTimeout = null)
+    public CentralClient(AgentConfiguration configuration, HttpMessageHandler? handler = null, TimeSpan? requestTimeout = null, string? appVersion = null)
     {
         this.configuration = configuration;
         this.requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(15);
+        this.appVersion = IsStableVersion(appVersion) ? appVersion : null;
         endpoint = new Uri(CentralDiscovery.ValidateProject(configuration.ProjectUrl), "functions/v1/biometria");
         http = handler is null ? CentralDiscovery.CreateHttpClient() : new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
     }
+
+    /// <summary>
+    /// Recursos que a Central anunciou na última sincronização. A Central antiga recusa campos desconhecidos,
+    /// então nada novo é enviado antes de ela avisar que entende.
+    /// </summary>
+    public IReadOnlySet<string> Features => features;
 
     public async Task<PairingResponse> PairAsync(string code, CancellationToken cancellationToken)
     {
@@ -96,30 +110,56 @@ public sealed class CentralClient : ICentralClient
         var result = await SendAsync<PairingResponse>("parear", new { Codigo = code.Trim() }, cancellationToken, authenticated: false).ConfigureAwait(false);
         if (result.Protocolo != 1 || result.DispositivoId == Guid.Empty || result.Token.Length is < 20 or > 4096 || result.Token.Any(char.IsWhiteSpace))
             throw new CentralException("A Central devolveu um pareamento inválido.");
-        return result;
+        return result with { Nome = SafeName(result.Nome) };
     }
 
     public async Task<SyncResponse> SynchronizeAsync(CancellationToken cancellationToken)
     {
-        var sync = await SendAsync<SyncResponse>("sincronizar", new { }, cancellationToken).ConfigureAwait(false);
+        object data = appVersion is not null && features.Contains(FeatureVersion) ? new { Versao = appVersion } : new { };
+        SyncResponse sync;
+        try { sync = await SendAsync<SyncResponse>("sincronizar", data, cancellationToken).ConfigureAwait(false); }
+        catch
+        {
+            // Uma Central que voltou à versão antiga recusaria `versao` para sempre: a próxima tentativa vai sem campos novos.
+            features = new(StringComparer.Ordinal);
+            throw;
+        }
         if (sync.Protocolo != 1 || sync.Cadastros is null || sync.Cadastros.Length > 10000 || sync.Cadastros.Any(id => id == Guid.Empty) || sync.Cadastros.Distinct().Count() != sync.Cadastros.Length ||
             (!sync.Revogado && sync.ServidorEm is null) || (sync.Revogado && (sync.Cadastros.Length != 0 || sync.Comando is not null)))
             throw new CentralException("A Central devolveu uma sincronização incompatível. Nenhum acesso foi autorizado.");
+        // O pedido de cadastro dura até 10 minutos na Central nova (5 na antiga).
         if (sync.Comando is { } command && (command.Id == Guid.Empty || command.CadastroId == Guid.Empty || command.Tipo != "cadastrar" || !sync.Cadastros.Contains(command.CadastroId) ||
-            command.Nome is null || command.Nome.Length > 300 || command.ExpiraEm > sync.ServidorEm!.Value.AddMinutes(5).AddSeconds(5)))
+            command.Nome is null || command.Nome.Length > 300 || command.ExpiraEm > sync.ServidorEm!.Value.AddMinutes(10).AddSeconds(5)))
             throw new CentralException("A Central devolveu uma operação de cadastro inválida.");
-        return sync;
+        features = (sync.Recursos ?? []).Where(name => name is { Length: > 0 and <= 64 }).Take(64).ToHashSet(StringComparer.Ordinal);
+        return sync with
+        {
+            Comando = sync.Comando is { } valid ? valid with { Empresa = SafeName(valid.Empresa) } : null,
+            Dispositivo = sync.Dispositivo is { } device ? device with { Nome = SafeName(device.Nome) } : null
+        };
     }
 
-    public async Task CompleteAsync(Guid command, string result, string? reason, CancellationToken cancellationToken) =>
-        _ = await SendAsync<JsonElement>("concluir", new { ComandoId = command, Resultado = result, Motivo = reason }, cancellationToken).ConfigureAwait(false);
+    public async Task CompleteAsync(EnrollmentCompletion completion, CancellationToken cancellationToken)
+    {
+        object data = features.Contains(FeatureDuplicateOf)
+            ? new
+            {
+                ComandoId = completion.CommandId,
+                Resultado = completion.Result,
+                Motivo = completion.Reason,
+                DuplicadaDe = completion.DuplicateOf,
+                Leituras = completion.Readings is int readings ? Math.Clamp(readings, 1, 10) : (int?)null
+            }
+            : new { ComandoId = completion.CommandId, Resultado = completion.Result, Motivo = completion.Reason };
+        _ = await SendAsync<JsonElement>("concluir", data, cancellationToken).ConfigureAwait(false);
+    }
 
     public async Task<DecisionResponse> IdentifyAsync(Guid operation, Guid enrollment, DateTimeOffset capturedAt, CancellationToken cancellationToken)
     {
         var decision = await SendAsync<DecisionResponse>("identificar", new { OperacaoId = operation, CadastroId = enrollment, CapturadoEm = capturedAt.ToUniversalTime() }, cancellationToken).ConfigureAwait(false);
         if (decision.PortaAcionada || decision.Nome is null || decision.Nome.Length > 300 || decision.Motivo is null || decision.Motivo.Length > 128)
             throw new CentralException("A Central devolveu uma decisão incompatível. Nenhum acesso foi autorizado.");
-        return decision;
+        return decision with { Display = DisplayInfo.From(decision.Exibir), Exibir = null };
     }
 
     public async Task ConfirmRemovalsAsync(IReadOnlyCollection<Guid> ids, bool all, CancellationToken cancellationToken)
@@ -127,6 +167,22 @@ public sealed class CentralClient : ICentralClient
         object data = all ? new { Todos = true } : new { Cadastros = ids };
         _ = await SendAsync<JsonElement>("confirmar_remocao", data, cancellationToken).ConfigureAwait(false);
     }
+
+    public async Task<bool> UnpairAsync(CancellationToken cancellationToken)
+    {
+        if (!features.Contains(FeatureUnpair)) return false;
+        _ = await SendAsync<JsonElement>("desparear", new { }, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    private static string? SafeName(string? value)
+    {
+        var text = value?.Trim();
+        return string.IsNullOrEmpty(text) || text.Length > 300 || text.Any(char.IsControl) ? null : text;
+    }
+
+    internal static bool IsStableVersion(string? value) =>
+        value is { Length: > 0 and <= 32 } && value.Split('.') is { Length: 3 } parts && parts.All(part => part.Length is > 0 and <= 5 && part.All(char.IsAsciiDigit));
 
     private async Task<T> SendAsync<T>(string action, object data, CancellationToken cancellationToken, bool authenticated = true)
     {

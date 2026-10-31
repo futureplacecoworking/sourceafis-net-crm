@@ -61,12 +61,16 @@ internal static class ReaderDiagnostics
             AgentStatus.Ready or AgentStatus.Capturing or AgentStatus.Authorized or AgentStatus.Denied => new DiagnosticEntry("A Central respondeu na última operação.", DiagnosticTone.Healthy),
             AgentStatus.Connecting => new("Conectando à Central. Aguarde a confirmação.", DiagnosticTone.Neutral),
             AgentStatus.Offline => new("Sem resposta da Central. O aplicativo tenta reconectar automaticamente.", DiagnosticTone.Attention),
-            AgentStatus.Revoked => new("Leitor bloqueado pela Central. Confira o cadastro no CRM.", DiagnosticTone.Error),
+            AgentStatus.Revoked => new("Leitor bloqueado pela Central. Confira em Digitais › Central biométrica.", DiagnosticTone.Error),
             AgentStatus.Error => new("A operação precisa de atenção. Não há confirmação atual da conexão.", DiagnosticTone.Attention),
             _ => new("Aguardando configuração e confirmação da Central.", DiagnosticTone.Neutral)
         };
 
+        // Só conta como resposta do aparelho o que passou por ele: espera do dedo, leitura ou cadastro em andamento.
         bool readerResponded = snapshot.Status is AgentStatus.Capturing or AgentStatus.Authorized
+            || snapshot.Identification is not null
+            || snapshot.Enrollment is { Phase: EnrollmentPhase.Place or EnrollmentPhase.Reading or EnrollmentPhase.Lift or EnrollmentPhase.BadReading or EnrollmentPhase.Checking }
+            || snapshot.Status == AgentStatus.Ready && snapshot.Hint is ReaderHint.PlaceFinger or ReaderHint.LiftFinger
             || snapshot.Status == AgentStatus.Ready && (snapshot.Message.StartsWith("Coloque o dedo cadastrado no leitor.", StringComparison.Ordinal)
                 || snapshot.Message.StartsWith("Retire o dedo do leitor antes de começar", StringComparison.Ordinal)
                 || snapshot.Message.StartsWith("Digital cadastrada na Central.", StringComparison.Ordinal));
@@ -83,8 +87,8 @@ internal static class ReaderDiagnostics
             AgentStatus.Error when hardwareFailure => "Reconecte o cabo USB e confira o driver Futronic e o arquivo de captura selecionado abaixo. Depois, acompanhe uma nova leitura.",
             AgentStatus.Error => "Confira a orientação da operação na tela Leitura. Este aviso não identifica sozinho a causa da falha.",
             AgentStatus.Offline => "Confira a internet deste computador e aguarde a reconexão. O acesso depende da Central.",
-            AgentStatus.Revoked => "Revise o leitor em Automação e sensores → Leitor da recepção. Um novo pareamento precisa ser autorizado pela administração.",
-            _ when !configuration.IsPaired => "Gere o código em Automação e sensores → Leitor da recepção → Parear leitor e informe-o abaixo.",
+            AgentStatus.Revoked => "Revise o leitor na Central em Digitais › Central biométrica. Um novo pareamento precisa ser autorizado pela administração.",
+            _ when !configuration.IsPaired => "Gere o código na Central em Digitais › Central biométrica › Parear leitor e informe-o abaixo.",
             _ when library.Tone != DiagnosticTone.Healthy => "Confira o arquivo de captura nas configurações abaixo. O driver e o FS80H precisam estar preparados para a leitura.",
             _ => "Acompanhe as instruções na tela Leitura. Cadastros, permissões e horários são administrados pela Central."
         };

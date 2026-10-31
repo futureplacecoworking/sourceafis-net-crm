@@ -43,7 +43,7 @@ public class MainFormTests
     {
         using var ui = new UiFixture();
         var state = ui.Store.LoadState();
-        var templates = ui.Store.LoadTemplates().ToArray();
+        var templates = TemplateContents(ui.Store.LoadTemplates());
         ui.Click("navigationSettings");
         var url = ui.Find<TextBox>("centralUrl");
         var code = ui.Find<TextBox>("pairingCode");
@@ -65,7 +65,7 @@ public class MainFormTests
         Assert.That(url.Text, Is.EqualTo("https://rascunho.example"));
         Assert.That(code.Text, Is.EqualTo("codigo-sintetico"));
         Assert.That(ui.Store.LoadState(), Is.EqualTo(state));
-        Assert.That(ui.Store.LoadTemplates(), Is.EqualTo(templates));
+        Assert.That(TemplateContents(ui.Store.LoadTemplates()), Is.EqualTo(templates));
         Assert.That(ui.Store.Writes, Is.Zero);
     }
 
@@ -225,6 +225,10 @@ public class MainFormTests
         bitmap.Save(path, ImageFormat.Png);
         TestContext.AddTestAttachment(path, $"Prévia nativa {scenario}; dados sintéticos, sem rede ou USB.");
     }
+
+    // A loja devolve cópias novas (o programa zera a memória das digitais depois de usar), então compara o conteúdo, não a referência.
+    private static string[] TemplateContents(IEnumerable<StoredTemplate> templates) =>
+        templates.Select(t => $"{t.CadastroId}:{t.ComandoId}:{string.Join(",", t.AllTemplates().Select(Convert.ToHexString))}").ToArray();
 
     private static string Colors(Control root) => string.Join("|", UiFixture.Tree(root).Select(c => $"{c.ForeColor.ToArgb()}:{c.BackColor.ToArgb()}"));
 

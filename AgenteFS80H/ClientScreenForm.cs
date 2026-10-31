@@ -1,8 +1,19 @@
 namespace Futureplace.AgenteFS80H.Desktop;
 
+/// <summary>Por que a tela nova (WebView2) não abriu e a janela ficou na tela simples.</summary>
+internal enum ClientWebFailure { RuntimeMissing, Failed }
+
+/// <summary>
+/// Tela do cliente no monitor em pé. Mostra a página da opção A pelo WebView2; se ele faltar ou falhar,
+/// continua com a tela simples desenhada em WinForms, que nunca depende de componente externo.
+/// </summary>
 internal sealed class ClientScreenForm : Form
 {
     private readonly Image logo = CentralTheme.Logo();
+    private readonly TableLayoutPanel nativeShell;
+    private IClientWebHost? web;
+    private AgentSnapshot? lastSnapshot;
+    private string? lastJson;
     private readonly ClientAnimation animation = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Label caption = Label("clientCaption", 10, true);
     private readonly Label title = Label("clientTitle", 32, true);
@@ -12,7 +23,7 @@ internal sealed class ClientScreenForm : Form
     private Rectangle windowBounds;
     private float titleSize;
 
-    public ClientScreenForm()
+    public ClientScreenForm(Func<IClientWebHost>? webHostFactory = null)
     {
         SuspendLayout();
         Name = "clientScreen";
@@ -26,7 +37,7 @@ internal sealed class ClientScreenForm : Form
         MinimumSize = new Size(720, 540);
         StartPosition = FormStartPosition.Manual;
 
-        var shell = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty };
+        var shell = nativeShell = new TableLayoutPanel { Name = "clientNativeScreen", Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Margin = Padding.Empty };
         shell.SuspendLayout();
         shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         shell.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
@@ -78,13 +89,84 @@ internal sealed class ClientScreenForm : Form
         SizeChanged += (_, _) => ResizeContent();
         content.SizeChanged += (_, _) => ResizeContent();
         ResumeTree(shell);
+        if (webHostFactory is not null) AttachWeb(webHostFactory);
         ResumeLayout(true);
         ResizeContent();
+    }
+
+    /// <summary>A tela nova não abriu; a janela segue na tela simples. A recepção é avisada de como resolver.</summary>
+    public event Action<ClientWebFailure>? WebUnavailable;
+
+    /// <summary>True enquanto a página nova (WebView2) é a que está na tela.</summary>
+    public bool UsingWebPage => web is not null;
+
+    private void AttachWeb(Func<IClientWebHost> factory)
+    {
+        try { web = factory(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            web = null;
+            Load += (_, _) => WebUnavailable?.Invoke(ClientWebFailure.Failed);
+            return;
+        }
+        BackColor = Color.Black;
+        web.View.Dock = DockStyle.Fill;
+        web.Failed += () => { if (!IsDisposed) BeginInvoke(() => FallBack(ClientWebFailure.Failed)); };
+        Controls.Add(web.View);
+        web.View.BringToFront();
+        nativeShell.Visible = false;
+        Load += async (_, _) => await StartWebAsync();
+    }
+
+    private async Task StartWebAsync()
+    {
+        var host = web;
+        if (host is null) return;
+        try
+        {
+            await host.InitializeAsync();
+            if (IsDisposed || !ReferenceEquals(host, web)) return;
+            if (lastSnapshot is not null) ShowWeb(lastSnapshot);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (!IsDisposed && ReferenceEquals(host, web))
+                FallBack(ex is ClientWebUnavailableException { RuntimeMissing: true } ? ClientWebFailure.RuntimeMissing : ClientWebFailure.Failed);
+        }
+    }
+
+    private void FallBack(ClientWebFailure reason)
+    {
+        var host = web;
+        if (host is null || IsDisposed) return;
+        web = null;
+        lastJson = null;
+        Controls.Remove(host.View);
+        host.Dispose();
+        BackColor = CentralTheme.Background;
+        nativeShell.Visible = true;
+        if (lastSnapshot is not null) ShowNative(lastSnapshot);
+        WebUnavailable?.Invoke(reason);
     }
 
     public void ShowSnapshot(AgentSnapshot snapshot)
     {
         if (IsDisposed) return;
+        lastSnapshot = snapshot;
+        if (web is not null) ShowWeb(snapshot);
+        ShowNative(snapshot);
+    }
+
+    private void ShowWeb(AgentSnapshot snapshot)
+    {
+        var json = ClientPage.Serialize(ClientPage.From(snapshot, DateTimeOffset.UtcNow));
+        if (json == lastJson) return;
+        lastJson = json;
+        web!.Show(json);
+    }
+
+    private void ShowNative(AgentSnapshot snapshot)
+    {
         var state = ClientPresentation.From(snapshot, DateTimeOffset.UtcNow);
         content.SuspendLayout();
         caption.Text = state.Caption;
@@ -181,7 +263,9 @@ internal sealed class ClientScreenForm : Form
     protected override void Dispose(bool disposing)
     {
         var icon = disposing ? Icon : null;
+        var host = disposing ? web : null;
+        web = null;
         base.Dispose(disposing);
-        if (disposing) { logo.Dispose(); icon?.Dispose(); }
+        if (disposing) { host?.Dispose(); logo.Dispose(); icon?.Dispose(); }
     }
 }
