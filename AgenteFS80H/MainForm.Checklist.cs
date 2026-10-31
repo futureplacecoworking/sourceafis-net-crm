@@ -94,14 +94,16 @@ internal sealed partial class MainForm
                 ChecklistState.Attention => CentralTheme.Warning,
                 _ => CentralTheme.Muted
             };
-            row.Mark.AccessibleName = item.State switch
+            var accessible = item.State switch
             {
                 ChecklistState.Done => "Pronto",
                 ChecklistState.Attention => "Precisa de atenção",
                 _ => "Falta fazer"
             };
+            // O leitor redesenha a janela a cada ciclo: só mexe no que mudou.
+            if (row.Mark.AccessibleName != accessible) row.Mark.AccessibleName = accessible;
             SetText(row.Detail, item.Detail);
-            row.Action.Visible = item.Action is not null;
+            if (row.Action.Visible != (item.Action is not null)) row.Action.Visible = item.Action is not null;
             if (item.Action is not null && row.Action.Text != item.Action)
             {
                 row.Action.Text = item.Action;

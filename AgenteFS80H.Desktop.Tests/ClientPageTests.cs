@@ -123,7 +123,9 @@ public class ClientPageTests
         Assert.That(page.Txt, Is.EqualTo(text));
         Assert.That(page.Passos, Is.EqualTo(new[] { "feito", "feito", "erro", "" }));
         Assert.That(page.Cartao, Is.Null);
-        Assert.That(ClientPage.Serialize(page), Does.Not.Contain(motivo.Length > 0 ? motivo : "\u0000"), "O código interno do motivo não aparece para o cliente.");
+        // Comparação ordinal: a comparação cultural do .NET (ICU) ignora caracteres invisíveis e acharia texto vazio em qualquer lugar.
+        var json = ClientPage.Serialize(page);
+        Assert.That(motivo.Length > 0 && json.Contains(motivo, StringComparison.Ordinal), Is.False, "O código interno do motivo não aparece para o cliente.");
     }
 
     [Test]

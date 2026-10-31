@@ -159,7 +159,9 @@ jobs:
       - name: Testar protocolo, proteção e fluxo do agente
         run: dotnet test AgenteFS80H.Tests/AgenteFS80H.Tests.csproj --configuration Release --logger trx --results-directory artifacts/test-results/agente
       - name: Testar a interface Windows e gerar prévias nativas
-        timeout-minutes: 5
+        # A suíte da 1.4 tem ~100 testes de janela (cerca de 3 a 5 s cada no runner) e passou de 5 minutos.
+        # Travamentos continuam pegos teste a teste pelo --blame-hang de 45 s abaixo.
+        timeout-minutes: 10
         env:
           FS80H_UI_OUTPUT: ${{ github.workspace }}/artifacts/ui
         run: dotnet test AgenteFS80H.Desktop.Tests/AgenteFS80H.Desktop.Tests.csproj --configuration Release --runtime win-x64 -p:SelfContained=false --logger trx --blame-hang --blame-hang-timeout 45s --blame-hang-dump-type none --results-directory artifacts/test-results/desktop
