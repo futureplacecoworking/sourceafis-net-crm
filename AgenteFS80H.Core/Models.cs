@@ -225,6 +225,9 @@ public sealed record DecisionResponse
 /// <summary>Dados de `concluir`. Os campos novos só seguem quando a Central anuncia `duplicada_de`.</summary>
 public sealed record EnrollmentCompletion(Guid CommandId, string Result, string? Reason = null, Guid? DuplicateOf = null, int? Readings = null);
 
+/// <summary>Resposta de `relatar`: quantos avisos a Central guardou e se o limite diário deste leitor foi atingido.</summary>
+public sealed record ReportReceipt(int Received, bool LimitReached);
+
 public interface ICentralClient : IDisposable
 {
     /// <summary>Recursos anunciados na última sincronização bem-sucedida (vazio na Central antiga).</summary>
@@ -235,6 +238,8 @@ public interface ICentralClient : IDisposable
     Task ConfirmRemovalsAsync(IReadOnlyCollection<Guid> ids, bool all, CancellationToken cancellationToken);
     /// <summary>Avisa a Central que este leitor foi despareado. Devolve false quando a Central não oferece a ação.</summary>
     Task<bool> UnpairAsync(CancellationToken cancellationToken);
+    /// <summary>Avisa a Central dos erros e travamentos do programa. Devolve nulo quando ela não oferece `relatar` (nada é enviado).</summary>
+    Task<ReportReceipt?> ReportAsync(IReadOnlyList<IncidentReport> items, CancellationToken cancellationToken) => Task.FromResult<ReportReceipt?>(null);
 }
 public interface ILocalStore
 {

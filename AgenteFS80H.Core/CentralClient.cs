@@ -81,6 +81,7 @@ public sealed class CentralClient : ICentralClient
     public const string FeatureDisplay = "exibir";
     public const string FeatureUnpair = "desparear";
     public const string FeatureDuplicateOf = "duplicada_de";
+    public const string FeatureReport = "relatar";
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
     private readonly AgentConfiguration configuration;
     private readonly HttpClient http;
@@ -173,6 +174,33 @@ public sealed class CentralClient : ICentralClient
         if (!features.Contains(FeatureUnpair)) return false;
         _ = await SendAsync<JsonElement>("desparear", new { }, cancellationToken).ConfigureAwait(false);
         return true;
+    }
+
+    /// <summary>
+    /// Avisa a Central dos erros e travamentos do programa (de 1 a 20 por vez). Devolve nulo, sem chamar a Central, quando ela
+    /// não anunciou `relatar`. Uma recusa ou falta de resposta lança <see cref="CentralException"/> e os avisos continuam com quem chamou.
+    /// </summary>
+    public async Task<ReportReceipt?> ReportAsync(IReadOnlyList<IncidentReport> items, CancellationToken cancellationToken)
+    {
+        if (items.Count is < 1 or > ErrorOutbox.BatchSize) throw new ArgumentOutOfRangeException(nameof(items), "Um aviso à Central leva de 1 a 20 itens.");
+        if (!features.Contains(FeatureReport)) return null;
+        // Só códigos técnicos: o formato de cada campo é o combinado com a Central (hora em UTC com Z, sem frações).
+        var data = new
+        {
+            Itens = items.Select(item => new
+            {
+                Em = IncidentReport.FormatTime(item.At), Tipo = item.Kind, Etapa = item.Stage, Codigo = item.Code,
+                Segundos = item.Seconds, Quantidade = item.Count, Versao = item.Version
+            }).ToArray()
+        };
+        var response = await SendAsync<ReportResponse>("relatar", data, cancellationToken).ConfigureAwait(false);
+        return new ReportReceipt(Math.Clamp(response.Recebidos ?? items.Count, 0, items.Count), response.Limite == true);
+    }
+
+    private sealed record ReportResponse
+    {
+        public int? Recebidos { get; init; }
+        public bool? Limite { get; init; }
     }
 
     private static string? SafeName(string? value)

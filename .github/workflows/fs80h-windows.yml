@@ -294,7 +294,7 @@ jobs:
             if ($executed -lt $AtLeast) { throw "$Title rodou só $executed testes (esperado pelo menos $AtLeast): a categoria SemTravar sumiu?" }
             Write-Host "$Title : $executed testes passaram."
           }
-          Test-Category 'Vigia, registro e estado repetido (núcleo)' 'AgenteFS80H.Tests/AgenteFS80H.Tests.csproj' 'semtravar-nucleo.trx' 7 @()
+          Test-Category 'Vigia, registro, estado repetido e aviso de travamentos (núcleo)' 'AgenteFS80H.Tests/AgenteFS80H.Tests.csproj' 'semtravar-nucleo.trx' 11 @()
           Test-Category 'Janelas: contas de layout e travamento' 'AgenteFS80H.Desktop.Tests/AgenteFS80H.Desktop.Tests.csproj' 'semtravar-janelas.trx' 15 @('--runtime', 'win-x64', '-p:SelfContained=false')
       - name: Disponibilizar resultados da verificação
         if: always()
