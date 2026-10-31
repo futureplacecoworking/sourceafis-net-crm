@@ -409,7 +409,9 @@ internal sealed partial class MainForm : Form
 
     private bool ApplyContentWidths()
     {
-        var widths = ContentWidths.Compute(ClientSize.Width, pages.ClientSize.Width - pages.Padding.Horizontal,
+        // Tudo vem do contêiner que de fato foi posicionado (pages), nunca de ClientSize da janela: se o Windows limitar o
+        // tamanho da janela ao da tela, ClientSize pode mostrar o tamanho pedido enquanto o layout ainda está no anterior.
+        var widths = ContentWidths.Compute(pages.Width, pages.ClientSize.Width - pages.Padding.Horizontal,
             SystemInformation.GetVerticalScrollBarWidthForDpi(DeviceDpi), DeviceDpi / 96F);
         // O primeiro texto serve de prova: se o Windows reescalou os tamanhos por conta própria, aplica de novo.
         if (appliedWidths == widths && (wrappingLabels.Count == 0 || wrappingLabels[0].MaximumSize.Width == widths.Full)) return false;
