@@ -7,7 +7,7 @@ orientações de captura em destaque e fontes/arte incorporadas para uso offline
 A versão 1.4 cadastra o mesmo dedo 4 vezes (leitura ruim pede de novo, sem cancelar), mostra ao cliente a tela
 **Rastreio** no monitor em pé (etapas com ✓ e cartão de quem entra, pelo WebView2 do Windows) e protege o pareamento
 com LIMPAR/TROCAR, avisando a Central para não sobrar leitor fantasma.
-A versão 1.5 passa a guardar a **cópia mestra das digitais na Central** (cifrada); o computador mantém só um cache protegido para comparar rápido, e as digitais voltam sozinhas se ele for trocado ou formatado.
+A versão 1.6 passa a guardar a **cópia mestra das digitais na Central** (cifrada); o computador mantém só um cache protegido para comparar rápido, e as digitais voltam sozinhas se ele for trocado ou formatado.
 A **Central Biométrica** é instalada pelo [EXE oficial para Windows](https://github.com/futureplacecoworking/sourceafis-net-crm/releases/latest/download/Central-Biometrica-Setup.exe), com logo, progresso e atualização pelo próprio app. O workflow **Agente FS80H — Windows** valida e gera cada versão; consulte [o histórico](docs/ALTERACOES-CENTRAL-BIOMETRICA.md).
 [Instalação, pareamento e operação em português](docs/AGENTE-FS80H.md).
 Nenhuma fechadura é acionada nesta etapa. Driver e DLL oficiais são obtidos separadamente do fabricante.
