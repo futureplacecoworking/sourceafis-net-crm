@@ -244,6 +244,7 @@ public sealed record DigitalDownloadResponse
 {
     public DigitalDownload[] Digitais { get; init; } = [];
 }
+
 /// <summary>Resposta de `relatar`: quantos avisos a Central guardou e se o limite diário deste leitor foi atingido.</summary>
 public sealed record ReportReceipt(int Received, bool LimitReached);
 

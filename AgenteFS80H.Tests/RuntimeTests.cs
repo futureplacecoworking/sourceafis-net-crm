@@ -697,6 +697,8 @@ public class RuntimeTests
             if (FailDigitals) throw new CentralException("sem_chave");
             lock (DownloadRequests) DownloadRequests.Add(enrollments.ToArray());
             return Task.FromResult(enrollments.Where(Downloadable.ContainsKey).Select(id => new DigitalDownload { CadastroId = id, Leituras = Downloadable[id] }).ToArray());
+        }
+
         /// <summary>Lotes recebidos em `relatar`, um por chamada (inclusive os que falharam).</summary>
         public List<IncidentReport[]> Reports { get; } = [];
         /// <summary>Decide a resposta de cada chamada (número da chamada, a partir de 1). Pode lançar erro; nulo = a Central recebeu tudo.</summary>

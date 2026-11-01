@@ -217,6 +217,8 @@ public sealed class CentralClient : ICentralClient
     private void RequireDigitals()
     {
         if (!features.Contains(FeatureDigitalsInDatabase)) throw new CentralException("A Central não oferece o armazenamento de digitais.");
+    }
+
     /// <summary>
     /// Avisa a Central dos erros e travamentos do programa (de 1 a 20 por vez). Devolve nulo, sem chamar a Central, quando ela
     /// não anunciou `relatar`. Uma recusa ou falta de resposta lança <see cref="CentralException"/> e os avisos continuam com quem chamou.
