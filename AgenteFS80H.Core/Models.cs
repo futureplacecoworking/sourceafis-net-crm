@@ -244,6 +244,8 @@ public sealed record DigitalDownloadResponse
 {
     public DigitalDownload[] Digitais { get; init; } = [];
 }
+/// <summary>Resposta de `relatar`: quantos avisos a Central guardou e se o limite diário deste leitor foi atingido.</summary>
+public sealed record ReportReceipt(int Received, bool LimitReached);
 
 public interface ICentralClient : IDisposable
 {
@@ -261,6 +263,8 @@ public interface ICentralClient : IDisposable
     Task StoreDigitalAsync(Guid enrollment, IReadOnlyList<string> readings, CancellationToken cancellationToken);
     /// <summary><c>baixar_digitais</c>: pede as leituras de até <see cref="CentralClient.DownloadBatchSize"/> cadastros.</summary>
     Task<DigitalDownload[]> DownloadDigitalsAsync(IReadOnlyCollection<Guid> enrollments, CancellationToken cancellationToken);
+    /// <summary>Avisa a Central dos erros e travamentos do programa. Devolve nulo quando ela não oferece `relatar` (nada é enviado).</summary>
+    Task<ReportReceipt?> ReportAsync(IReadOnlyList<IncidentReport> items, CancellationToken cancellationToken) => Task.FromResult<ReportReceipt?>(null);
 }
 public interface ILocalStore
 {
