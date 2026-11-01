@@ -96,9 +96,25 @@ Os parâmetros iniciais de comparação são score mínimo **40** e margem míni
 
 ### Compatibilidade com a Central
 
-O programa 1.4 funciona com a Central antiga e com a nova. Tudo o que é novo só é usado depois que a Central anuncia em `recursos`: a versão do programa na sincronização (`versao`), o cadastro com várias leituras (`leituras`), o cartão de quem entra (`exibir`), o aviso de despareamento (`desparear`) e o cadastro que já tem a digital (`duplicada_de`). Com a Central antiga, o programa manda exatamente o que a 1.3 mandava.
+O programa 1.4 funciona com a Central antiga e com a nova. Tudo o que é novo só é usado depois que a Central anuncia em `recursos`: a versão do programa na sincronização (`versao`), o cadastro com várias leituras (`leituras`), o cartão de quem entra (`exibir`), o aviso de despareamento (`desparear`), o cadastro que já tem a digital (`duplicada_de`) e, desde a 1.5.0, o aviso de erros e travamentos (`relatar`). Com a Central antiga, o programa manda exatamente o que a 1.3 mandava.
 
 Se a rede cair, a Central ficar indisponível ou o leitor apresentar erro, o estado exibido orienta a correção. **Não há autorização offline**, nem envio posterior de identificações antigas. O aplicativo tenta restabelecer a comunicação. O PC e o agente precisam permanecer ligados e a conta Windows deve estar conectada.
+
+#### Aviso de erros e travamentos à Central (`relatar`, 1.5.0)
+
+Quando a resposta de `sincronizar` traz `"relatar"` em `recursos`, o programa envia à Central os erros e travamentos que o registro local anota. Sem esse recurso (Central antiga) nada é enviado e os avisos ficam guardados. A ação usa o mesmo endereço e a mesma credencial do dispositivo das outras ações:
+
+```json
+{ "acao": "relatar", "dados": { "itens": [
+  { "em": "2026-10-31T15:00:00Z", "tipo": "travamento", "etapa": "ShowPage.Configuracoes",
+    "codigo": "ui_sem_resposta", "segundos": 8, "quantidade": 1, "versao": "1.5.0" } ] } }
+```
+
+- De 1 a 20 itens por chamada, no máximo uma chamada por ciclo do leitor, feita **depois de uma sincronização bem-sucedida e só com o leitor parado** (nunca pela thread da janela; quem tem o dedo no leitor não espera por isso).
+- `em`: quando aconteceu, em UTC com `Z`, sem frações (travamento: quando a janela parou). `tipo`: `erro` ou `travamento`. `etapa` (`^[A-Za-z0-9_. -]{1,60}$`): a última etapa marcada pelo vigia (`ShowPage.Configuracoes`, `ResizeContent`, `ShowSnapshot`, `ReloadConfiguration`, `ShowClientScreen`, `StartWebAsync`...) ou, nos erros que não são da janela, o componente que registrou (`Erro nao tratado`, `Tarefa com erro nao observado`, `Nao foi possivel iniciar`); um erro da janela usa a última etapa marcada; acentos saem, `:` vira `.` e o resto é cortado em 60. `codigo` (`^[A-Za-z0-9_.:+-]{1,120}$`): o tipo da exceção seguido do código do Windows (`System.IO.IOException:0x80070020`; uma exceção que só embrulha outra mostra a de dentro) ou `ui_sem_resposta` nos travamentos. `segundos` (0 a 86400): quanto tempo a janela ficou sem responder, avisado quando ela volta; 0 nos erros. `quantidade` (1 a 1000): repetições juntadas. `versao`: a versão do programa que registrou.
+- Nunca vão nomes, digitais, imagens, tokens, caminhos de arquivo nem a mensagem de uma exceção.
+- Resposta `{ "ok": true, "recebidos": n }`: os avisos saem da fila. Com `"limite": true` a Central guardou só `n` (limite diário do leitor): o resto fica e o envio pausa por 24 horas (ou até reiniciar o programa). `{ "ok": false }`, recusa ou falta de rede: os avisos continuam na fila e a nova tentativa espera 1 minuto, depois 2, 4... até 10, no máximo.
+- A fila (`relatos.json`, na pasta `logs`) guarda no máximo 200 avisos, descarta os de mais de 90 dias e junta os iguais (mesmo tipo, etapa e código) em até 10 minutos num aviso só, contando as repetições (nos travamentos vale o mais longo). É gravada fora da thread da janela e sobrevive a um reinício; um arquivo estragado vira uma fila vazia. Um travamento sem volta (programa fechado à força) é avisado na próxima abertura, com o último tempo conhecido.
 
 ## Bandeja, dados e revogação
 
@@ -106,7 +122,7 @@ Fechar a janela mantém o aplicativo na bandeja. Use o ícone para abrir o leito
 
 Token de dispositivo e templates ficam cifrados com **DPAPI CurrentUser** em `%LOCALAPPDATA%\Futureplace\AgenteFS80H\data`. A proteção depende da conta Windows; os arquivos não são uma forma portável de backup e não devem ser enviados a suporte. Não copie imagens, templates, token ou pastas de dados para tickets, chats ou logs. Imagens de captura são transitórias.
 
-A partir da 1.4.1 o programa mantém um **registro local de erros e travamentos** em `%LOCALAPPDATA%\Futureplace\AgenteFS80H\logs` (`agente.log` e `agente.1.log`, no máximo 512 KB cada; o mais antigo é descartado). Ele anota a abertura do programa e da versão, as páginas abertas, os erros inesperados (só o tipo do erro e o caminho no programa, nunca a mensagem) e, se a janela ficar mais de 3 segundos sem responder, quanto tempo durou e a última etapa. Não contém nomes, digitais, tokens, códigos nem endereços e fica separado da pasta `data`: pode ser anexado a um pedido de suporte.
+A partir da 1.4.1 o programa mantém um **registro local de erros e travamentos** em `%LOCALAPPDATA%\Futureplace\AgenteFS80H\logs` (`agente.log` e `agente.1.log`, no máximo 512 KB cada; o mais antigo é descartado). Ele anota a abertura do programa e da versão, as páginas abertas, os erros inesperados (só o tipo do erro e o caminho no programa, nunca a mensagem) e, se a janela ficar mais de 3 segundos sem responder, quanto tempo durou e a última etapa. Não contém nomes, digitais, tokens, códigos nem endereços e fica separado da pasta `data`: pode ser anexado a um pedido de suporte. A partir da 1.5.0, os erros e travamentos anotados aí também entram numa fila (`relatos.json`, na mesma pasta `logs`) que o programa envia à Central quando ela anuncia `relatar` (veja "Compatibilidade com a Central"): só o tipo do erro, a etapa e a contagem, nunca a mensagem.
 
 Revogue um cadastro ou o leitor pela Central. O bloqueio no servidor é imediato; quando o aplicativo sincroniza, apaga os templates locais removidos e confirma a exclusão à Central. Aguarde essa confirmação antes de desligar ou desinstalar o leitor. Um computador desligado não pode confirmar remoção física dos seus arquivos.
 

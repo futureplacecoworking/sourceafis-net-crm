@@ -671,6 +671,15 @@ public class RuntimeTests
             UnpairCalls++;
             return Task.FromResult(true);
         }
+        /// <summary>Lotes recebidos em `relatar`, um por chamada (inclusive os que falharam).</summary>
+        public List<IncidentReport[]> Reports { get; } = [];
+        /// <summary>Decide a resposta de cada chamada (número da chamada, a partir de 1). Pode lançar erro; nulo = a Central recebeu tudo.</summary>
+        public Func<int, ReportReceipt?>? OnReport { get; set; }
+        public Task<ReportReceipt?> ReportAsync(IReadOnlyList<IncidentReport> items, CancellationToken cancellationToken)
+        {
+            Reports.Add(items.ToArray());
+            return Task.FromResult<ReportReceipt?>(OnReport?.Invoke(Reports.Count) ?? new ReportReceipt(items.Count, false));
+        }
         public void Dispose() { }
     }
 }

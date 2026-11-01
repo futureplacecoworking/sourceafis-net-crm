@@ -22,6 +22,10 @@ public sealed class AgentRuntime : IDisposable
     private static readonly TimeSpan MaximumCaptureAge = TimeSpan.FromSeconds(20);
     // Durante o cadastro, uma queda curta da rede não derruba as leituras já feitas.
     private static readonly TimeSpan EnrollmentNetworkTolerance = TimeSpan.FromSeconds(20);
+    // Aviso de erros à Central: se falhar, espera 1 minuto, depois 2, 4... até 10; no limite diário, 24 horas.
+    private static readonly TimeSpan ReportRetryMinimum = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan ReportRetryMaximum = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan ReportLimitPause = TimeSpan.FromHours(24);
     private readonly ILocalStore store;
     private readonly Func<AgentConfiguration, ICentralClient> clientFactory;
     private readonly Func<string, IFingerprintScanner> scannerFactory;
@@ -29,6 +33,7 @@ public sealed class AgentRuntime : IDisposable
     private readonly TimeProvider clock;
     private readonly TimeSpan? pollInterval;
     private readonly string? appVersion;
+    private readonly ErrorOutbox? outbox;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly object stateLock = new();
     private AgentState state;
@@ -42,19 +47,21 @@ public sealed class AgentRuntime : IDisposable
     private DateTimeOffset keepResultUntil;
     private DateTimeOffset? lastContact;
     private EnrollmentCompletion? pendingFailure;
+    private DateTimeOffset nextReport;
+    private int reportFailures;
     public AgentConfiguration Configuration => state.Configuration;
     public AgentSnapshot Snapshot { get; private set; } = new(AgentStatus.Unconfigured, "Pareie este computador na Central e selecione a DLL oficial de captura.");
     public event Action<AgentSnapshot>? Changed;
     /// <summary>Resultado de uma leitura ou de um cadastro, para o som curto do leitor.</summary>
     public event Action<AgentSignal>? Signaled;
 
-    public static AgentRuntime CreateDefault(string? appVersion = null) => new(
+    public static AgentRuntime CreateDefault(string? appVersion = null, ErrorOutbox? outbox = null) => new(
         new ProtectedLocalStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Futureplace", "AgenteFS80H", "data")),
         config => new CentralClient(config, appVersion: appVersion), path => new FutronicScanner(path), new SourceAfisRecognizer(), TimeProvider.System,
-        appVersion: appVersion);
+        appVersion: appVersion, outbox: outbox);
 
     internal AgentRuntime(ILocalStore store, Func<AgentConfiguration, ICentralClient> clientFactory, Func<string, IFingerprintScanner> scannerFactory, IFingerprintRecognizer recognizer, TimeProvider clock,
-        TimeSpan? pollInterval = null, string? appVersion = null)
+        TimeSpan? pollInterval = null, string? appVersion = null, ErrorOutbox? outbox = null)
     {
         this.store = store;
         this.clientFactory = clientFactory;
@@ -63,6 +70,7 @@ public sealed class AgentRuntime : IDisposable
         this.clock = clock;
         this.pollInterval = pollInterval;
         this.appVersion = appVersion;
+        this.outbox = outbox;
         try
         {
             state = store.LoadState();
@@ -141,6 +149,7 @@ public sealed class AgentRuntime : IDisposable
             if (string.IsNullOrWhiteSpace(Configuration.ScannerDllPath))
             {
                 SetStatus(AgentStatus.Unconfigured, "Selecione a DLL oficial x64 e instale o driver Futronic neste computador.");
+                await ReportIncidentsAsync(sync, operation.Token).ConfigureAwait(false);
                 return;
             }
             scanner ??= scannerFactory(Configuration.ScannerDllPath);
@@ -158,6 +167,8 @@ public sealed class AgentRuntime : IDisposable
             if (!scanner.IsFingerPresent())
             {
                 if (!showingResult) SetStatus(AgentStatus.Ready, "Coloque o dedo cadastrado no leitor. A decisão depende da Central conectada.", ReaderHint.PlaceFinger);
+                // Leitor parado: é a hora de avisar a Central dos erros, sem atrasar nenhuma leitura.
+                await ReportIncidentsAsync(sync, operation.Token).ConfigureAwait(false);
                 return;
             }
             mustLift = true;
@@ -237,6 +248,40 @@ public sealed class AgentRuntime : IDisposable
 
     private void FinishIdentification(AgentStatus status, IdentificationProgress progress, string message, TimeSpan display) =>
         SetResult(status, message, display, progress.Result == IdentificationResult.Authorized ? AgentSignal.Positive : AgentSignal.Negative, identification: progress);
+
+    /// <summary>
+    /// Envia à Central, no máximo uma vez por ciclo e só com o leitor parado, um lote de até 20 erros e travamentos do programa.
+    /// Só quando a Central anunciou `relatar` na sincronização. Falha, recusa ou limite nunca mudam o estado do leitor nem uma
+    /// decisão de acesso: os avisos ficam guardados e a nova tentativa espera 1 minuto (depois 2, 4... até 10).
+    /// </summary>
+    private async Task ReportIncidentsAsync(SyncResponse sync, CancellationToken token)
+    {
+        if (outbox is null || client is null || sync.Revogado || sync.Recursos?.Contains(CentralClient.FeatureReport) != true) return;
+        var now = clock.GetUtcNow();
+        if (now < nextReport) return;
+        var batch = outbox.TakeBatch();
+        if (batch is null) return;
+        var settled = false;
+        try
+        {
+            var receipt = await client.ReportAsync(batch.Items, token).ConfigureAwait(false);
+            if (receipt is not null)
+            {
+                // Com o limite diário atingido a Central guardou só parte do lote: o resto fica para amanhã.
+                outbox.Accept(batch, receipt.LimitReached ? receipt.Received : batch.Items.Count);
+                settled = true;
+                reportFailures = 0;
+                nextReport = receipt.LimitReached ? now + ReportLimitPause : default;
+                return;
+            }
+        }
+        // O ciclo foi interrompido de propósito (novo pareamento, outra DLL): não é falha da Central, só tenta de novo depois.
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
+        catch (Exception) { }
+        finally { if (!settled) outbox.Return(batch); }
+        reportFailures++;
+        nextReport = now + TimeSpan.FromTicks(Math.Min(ReportRetryMaximum.Ticks, ReportRetryMinimum.Ticks << Math.Min(reportFailures - 1, 10)));
+    }
 
     private async Task<SyncResponse> SynchronizeAsync(CancellationToken token)
     {
@@ -552,6 +597,7 @@ public sealed class AgentRuntime : IDisposable
         }
         lastContact = null;
         pendingFailure = null;
+        ResetReporting();
         return notice;
     }
 
@@ -602,7 +648,8 @@ public sealed class AgentRuntime : IDisposable
         foreach (var template in templates) template.Clear();
     }
     private void ResetScanner() { scanner?.Dispose(); scanner = null; mustLift = true; }
-    private void ResetConnections() { client?.Dispose(); client = null; ResetScanner(); }
+    private void ResetConnections() { client?.Dispose(); client = null; ResetScanner(); ResetReporting(); }
+    private void ResetReporting() { nextReport = default; reportFailures = 0; }
     public void Dispose()
     {
         if (disposed) return;

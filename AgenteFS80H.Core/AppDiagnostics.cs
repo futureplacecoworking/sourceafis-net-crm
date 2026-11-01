@@ -29,12 +29,41 @@ public abstract class AppDiagnostics : IAppDiagnostics
 
     public string LastStep => Volatile.Read(ref lastStep);
     public virtual void Step(string name) => Volatile.Write(ref lastStep, name);
+    /// <summary>Contexto dos erros da thread da janela: na fila de avisos entram sob a última etapa marcada, não sob este nome.</summary>
+    public const string WindowContext = "Erro na janela";
+    private IIncidentRecorder? incidents;
+
+    /// <summary>
+    /// Quem também recebe os erros e travamentos para avisar a Central (a fila <see cref="ErrorOutbox"/>). Opcional:
+    /// sem ela, só o registro local é gravado. Falha da fila nunca chega a quem registrou.
+    /// </summary>
+    public IIncidentRecorder? Incidents { get => Volatile.Read(ref incidents); set => Volatile.Write(ref incidents, value); }
+
     public void Info(string message) => Write("INFO", message);
-    public void Error(string context, Exception exception) => Write("ERRO", context + ": " + Describe(exception));
-    public void Hang(TimeSpan duration, string lastStep) => Write("TRAVADA", $"UI sem resposta há {Seconds(duration)}s, última etapa: {lastStep}");
-    public void Recovered(TimeSpan duration) => Write("INFO", $"UI voltou a responder depois de {Seconds(duration)}s");
+    public void Error(string context, Exception exception)
+    {
+        Write("ERRO", context + ": " + Describe(exception));
+        // Erro da janela: vale a última etapa marcada (como nos travamentos). Os outros entram sob o nome do componente que os registrou.
+        Notify(recorder => recorder.RecordError(context == WindowContext ? LastStep : context, exception));
+    }
+    public void Hang(TimeSpan duration, string lastStep)
+    {
+        Write("TRAVADA", $"UI sem resposta há {Seconds(duration)}s, última etapa: {lastStep}");
+        Notify(recorder => recorder.RecordHang(duration, lastStep));
+    }
+    public void Recovered(TimeSpan duration)
+    {
+        Write("INFO", $"UI voltou a responder depois de {Seconds(duration)}s");
+        Notify(recorder => recorder.RecordRecovered(duration));
+    }
 
     protected abstract void Write(string level, string text);
+
+    private void Notify(Action<IIncidentRecorder> action)
+    {
+        try { if (Incidents is { } recorder) action(recorder); }
+        catch (Exception) { }
+    }
 
     private static int Seconds(TimeSpan duration) => (int)Math.Max(0, Math.Floor(duration.TotalSeconds));
 

@@ -1,5 +1,23 @@
 # Versões da Central Biométrica
 
+## 1.5.0 — 31/10/2026
+
+O programa agora **avisa a Central quando dá erro ou trava**, para a equipe ver sem precisar abrir o computador da recepção:
+
+- **Erros e travamentos aparecem na Central**, em **Digitais › Central biométrica › Leitor e ajustes**, e também no
+  sininho. Cada aviso diz a versão do programa, a hora, em que etapa estava, o tipo do erro e quantas vezes se repetiu
+  (se a janela travar, quantos segundos ficou sem responder).
+- **Só códigos técnicos.** Nunca vão nomes, digitais, imagens, códigos de pareamento, endereços, caminhos de arquivos
+  nem a mensagem escrita do erro. O registro local da 1.4.1 continua igual, só neste computador.
+- **Não atrapalha a leitura.** Os avisos são enviados com o leitor parado, no máximo 20 por vez, e uma falha no envio
+  nunca muda uma decisão de acesso nem o que aparece na tela do cliente. Se a Central não responder, o programa guarda os
+  avisos neste computador (até 200, por no máximo 90 dias, mesmo se o programa for fechado) e tenta de novo depois, no
+  máximo uma vez por minuto. Erros iguais em até 10 minutos viram um aviso só, com o número de repetições.
+- Se o programa for fechado à força com a janela travada, o travamento é avisado na próxima vez que ele abrir.
+- **Precisa da Central atualizada.** Com a Central antiga, o programa não envia nada (continua só com o registro
+  local), como já acontece com os outros recursos novos.
+- Nada muda no pareamento, nas digitais nem nas regras de acesso.
+
 ## 1.4.1 — 31/10/2026
 
 Ajuste para a janela não travar mais ao abrir **Configurações**:
