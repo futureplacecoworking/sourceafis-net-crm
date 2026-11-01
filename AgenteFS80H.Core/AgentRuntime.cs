@@ -35,6 +35,17 @@ public sealed class AgentRuntime : IDisposable
     private readonly string? appVersion;
     private readonly ErrorOutbox? outbox;
     private readonly SemaphoreSlim gate = new(1, 1);
+    // Cópia mestra das digitais na Central: roda em segundo plano, nunca dentro do ciclo de leitura.
+    private static readonly TimeSpan DefaultDigitalSyncInterval = TimeSpan.FromSeconds(60);
+    private const int MaximumUploadsPerRun = 50;
+    private readonly TimeSpan digitalSyncInterval;
+    private readonly CancellationTokenSource lifetime = new();
+    private readonly object digitalLock = new();
+    private readonly HashSet<Guid> pendingUploads = [];
+    private HashSet<Guid> knownEnrollments = [];
+    private int digitalRunning;
+    private volatile bool digitalForce;
+    private DateTimeOffset? lastDigitalSync;
     private readonly object stateLock = new();
     private AgentState state;
     private ICentralClient? client;
@@ -47,6 +58,8 @@ public sealed class AgentRuntime : IDisposable
     private DateTimeOffset keepResultUntil;
     private DateTimeOffset? lastContact;
     private EnrollmentCompletion? pendingFailure;
+    /// <summary>A sincronização de digitais em andamento (ou a última). Só os testes esperam por ela.</summary>
+    internal Task DigitalSyncTask { get; private set; } = Task.CompletedTask;
     private DateTimeOffset nextReport;
     private int reportFailures;
     public AgentConfiguration Configuration => state.Configuration;
@@ -61,8 +74,9 @@ public sealed class AgentRuntime : IDisposable
         appVersion: appVersion, outbox: outbox);
 
     internal AgentRuntime(ILocalStore store, Func<AgentConfiguration, ICentralClient> clientFactory, Func<string, IFingerprintScanner> scannerFactory, IFingerprintRecognizer recognizer, TimeProvider clock,
-        TimeSpan? pollInterval = null, string? appVersion = null, ErrorOutbox? outbox = null)
+        TimeSpan? pollInterval = null, string? appVersion = null, TimeSpan? digitalSyncInterval = null, ErrorOutbox? outbox = null)
     {
+        this.digitalSyncInterval = digitalSyncInterval ?? DefaultDigitalSyncInterval;
         this.store = store;
         this.clientFactory = clientFactory;
         this.scannerFactory = scannerFactory;
@@ -146,6 +160,8 @@ public sealed class AgentRuntime : IDisposable
                 return;
             }
             pendingFailure = null;
+            // Depois de um PC novo ou formatado, as digitais voltam da Central aqui, mesmo antes de escolher a DLL.
+            RequestDigitalSync(force: false);
             if (string.IsNullOrWhiteSpace(Configuration.ScannerDllPath))
             {
                 SetStatus(AgentStatus.Unconfigured, "Selecione a DLL oficial x64 e instale o driver Futronic neste computador.");
@@ -291,6 +307,7 @@ public sealed class AgentRuntime : IDisposable
         {
             if (!state.DeviceRevoked) UpdateState(current => current with { DeviceRevoked = true, TotalRemovalPending = true });
             // Remover sem decifrar: até um template corrompido precisa sair quando o leitor é revogado.
+            knownEnrollments = [];
             store.DeleteAllTemplates();
             ResetScanner();
             SetStatus(AgentStatus.Revoked, "Leitor bloqueado pela Central. As digitais locais foram removidas.");
@@ -301,6 +318,7 @@ public sealed class AgentRuntime : IDisposable
             }
             return sync;
         }
+        knownEnrollments = sync.Cadastros.ToHashSet();
         if (state.DeviceRevoked) throw new CentralException("Este pareamento foi revogado. Gere outro código na Central para voltar a usar este computador.");
         if (sync.ServidorEm is null || (clock.GetUtcNow() - sync.ServidorEm.Value).Duration() > TimeSpan.FromMinutes(2))
             throw new CentralException("Ajuste a data e a hora do Windows para sincronizar com a Central. Acesso bloqueado.");
@@ -400,6 +418,8 @@ public sealed class AgentRuntime : IDisposable
             // A gravação local precede concluir. O mesmo comando pode ser retomado sem coletar outra digital.
             store.SaveTemplate(new StoredTemplate(command.CadastroId, command.Id, samples[0]) { ExtraTemplates = samples.Skip(1).ToArray() });
             await client!.CompleteAsync(new EnrollmentCompletion(command.Id, "cadastrado", Readings: samples.Count), token).ConfigureAwait(false);
+            // A cópia na Central sai logo, em segundo plano; se falhar, o próximo estado_digitais manda de novo.
+            RequestDigitalSync(force: true, enrolled: command.CadastroId);
             SetResult(AgentStatus.Ready, $"Digital cadastrada na Central com {samples.Count} leituras boas. As regras de acesso continuam sendo decididas pela Central.",
                 ResultDisplay, AgentSignal.Positive, enrollment: progress with { Phase = EnrollmentPhase.Completed, Good = total, Reading = total });
         }
@@ -616,6 +636,137 @@ public sealed class AgentRuntime : IDisposable
         }
     }
 
+    private void RequestDigitalSync(bool force, Guid? enrolled = null)
+    {
+        var central = client;
+        // Central antiga: nada novo é chamado. Leitor revogado: nada a guardar nem a baixar.
+        if (central is null || disposed || state.DeviceRevoked || !central.Features.Contains(CentralClient.FeatureDigitalsInDatabase)) return;
+        if (enrolled is { } id) lock (digitalLock) pendingUploads.Add(id);
+        var now = clock.GetUtcNow();
+        if (!force && lastDigitalSync is { } last && now - last < digitalSyncInterval) return;
+        if (force) digitalForce = true;
+        // Uma sincronização de cada vez: se uma está rodando, o pedido forçado vira uma volta a mais dela.
+        if (Interlocked.CompareExchange(ref digitalRunning, 1, 0) != 0) return;
+        lastDigitalSync = now;
+        var token = lifetime.Token;
+        DigitalSyncTask = Task.Run(() => RunDigitalSyncAsync(central, token), CancellationToken.None);
+    }
+
+    private async Task RunDigitalSyncAsync(ICentralClient central, CancellationToken token)
+    {
+        try
+        {
+            do
+            {
+                digitalForce = false;
+                await DigitalStageAsync("envio do cadastro novo", () => UploadAsync(central, TakePendingUploads(), token)).ConfigureAwait(false);
+                DigitalStateResponse? digitalState = null;
+                await DigitalStageAsync("estado", async () => digitalState = await central.DigitalStateAsync(token).ConfigureAwait(false)).ConfigureAwait(false);
+                var current = digitalState;
+                if (current is null) continue;
+                await DigitalStageAsync("envio", () => UploadAsync(central, current.Enviar.Distinct().Take(MaximumUploadsPerRun).ToArray(), token)).ConfigureAwait(false);
+                await DigitalStageAsync("download", () => DownloadAsync(central, current.Baixar, token)).ConfigureAwait(false);
+            } while (digitalForce && !token.IsCancellationRequested);
+        }
+        finally { Volatile.Write(ref digitalRunning, 0); }
+    }
+
+    private static async Task DigitalStageAsync(string stage, Func<Task> work)
+    {
+        try { await work().ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            // Só a etapa e o tipo do erro: nunca digitais, nomes, identificadores nem mensagens da Central.
+            AppLog.Current.Info($"Digitais na Central: etapa «{stage}» não concluída ({ex.GetType().Name}). Nova tentativa mais tarde.");
+        }
+    }
+
+    private Guid[] TakePendingUploads()
+    {
+        lock (digitalLock)
+        {
+            var ids = pendingUploads.ToArray();
+            pendingUploads.Clear();
+            return ids;
+        }
+    }
+
+    private async Task UploadAsync(ICentralClient central, Guid[] ids, CancellationToken token)
+    {
+        if (ids.Length == 0) return;
+        var wanted = ids.ToHashSet();
+        var templates = store.LoadTemplates();
+        try
+        {
+            // Só sobe o que existe aqui. O que a Central pediu e este PC não tem fica para quem tem.
+            foreach (var stored in templates.Where(t => wanted.Contains(t.CadastroId)))
+            {
+                token.ThrowIfCancellationRequested();
+                var readings = new List<string>();
+                var oversized = false;
+                foreach (var sample in stored.AllTemplates().Take(CentralClient.MaximumStoredReadings))
+                {
+                    var text = Convert.ToBase64String(sample);
+                    if (text.Length > CentralClient.MaximumReadingBase64Length) oversized = true;
+                    else readings.Add(text);
+                }
+                if (oversized) AppLog.Current.Info("Digitais na Central: uma leitura grande demais não foi enviada.");
+                if (readings.Count == 0) continue;
+                await central.StoreDigitalAsync(stored.CadastroId, readings, token).ConfigureAwait(false);
+            }
+        }
+        finally { ClearTemplates(templates); }
+    }
+
+    private async Task DownloadAsync(ICentralClient central, Guid[] available, CancellationToken token)
+    {
+        var present = store.ListTemplateIds().ToHashSet();
+        var missing = available.Where(id => !present.Contains(id) && knownEnrollments.Contains(id)).Distinct().ToArray();
+        foreach (var batch in missing.Chunk(CentralClient.DownloadBatchSize))
+        {
+            token.ThrowIfCancellationRequested();
+            var downloads = await central.DownloadDigitalsAsync(batch, token).ConfigureAwait(false);
+            foreach (var item in downloads)
+            {
+                if (!batch.Contains(item.CadastroId)) continue;
+                SaveDownloaded(central, item);
+            }
+        }
+    }
+
+    private void SaveDownloaded(ICentralClient central, DigitalDownload item)
+    {
+        var samples = new List<byte[]>();
+        try
+        {
+            if (item.Leituras.Length is < 1 or > CentralClient.MaximumStoredReadings) return;
+            foreach (var text in item.Leituras)
+            {
+                if (string.IsNullOrEmpty(text) || text.Length > CentralClient.MaximumReadingBase64Length) continue;
+                byte[] sample;
+                try { sample = Convert.FromBase64String(text); }
+                catch (FormatException) { continue; }
+                // Só entra na base local o que o SourceAFIS consegue abrir.
+                try { _ = recognizer.Matcher(sample); }
+                catch (Exception) { CryptographicOperations.ZeroMemory(sample); continue; }
+                samples.Add(sample);
+            }
+            if (samples.Count == 0)
+            {
+                AppLog.Current.Info("Digitais na Central: nenhuma leitura válida veio de um cadastro; ele não foi guardado.");
+                return;
+            }
+            // O pareamento pode ter mudado e o cadastro pode ter sido revogado enquanto o pedido ia e voltava.
+            if (!ReferenceEquals(client, central) || state.DeviceRevoked || !knownEnrollments.Contains(item.CadastroId)) return;
+            store.SaveTemplate(new StoredTemplate(item.CadastroId, Guid.Empty, samples[0]) { ExtraTemplates = samples.Skip(1).ToArray() });
+        }
+        finally
+        {
+            foreach (var sample in samples) CryptographicOperations.ZeroMemory(sample);
+        }
+    }
+
     private void CancelCycle()
     {
         try { cycleCancellation?.Cancel(); }
@@ -654,6 +805,8 @@ public sealed class AgentRuntime : IDisposable
     {
         if (disposed) return;
         disposed = true;
+        try { lifetime.Cancel(); }
+        catch (ObjectDisposedException) { }
         CancelCycle();
         ResetConnections();
         gate.Dispose();

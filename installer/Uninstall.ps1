@@ -23,7 +23,7 @@ $shortcutPath = Join-Path $shortcutDirectory 'Agente FS80H.lnk'
 Write-Host 'Antes de desinstalar, revogue o leitor na Central com o agente conectado e aguarde a confirmação da remoção.'
 Write-Host 'A desinstalação local não revoga o dispositivo no servidor.'
 if ($PSCmdlet.ParameterSetName -eq 'Ask') {
-    Write-Host 'M: manter pareamento e templates cifrados para reinstalar nesta conta Windows.'
+    Write-Host 'M: manter pareamento e a cópia protegida das digitais para reinstalar nesta conta Windows (a Central guarda a cópia principal).'
     Write-Host 'R: remover definitivamente todos os dados locais do agente.'
     Write-Host 'C: cancelar e não alterar a instalação.'
     $choice = Read-Host 'Escolha M, R ou C (Enter cancela)'
@@ -67,6 +67,6 @@ if ((Test-Path -LiteralPath $shortcutDirectory) -and @(Get-ChildItem -LiteralPat
 if ($KeepData) {
     Write-Host 'Aplicativo removido. Os dados cifrados foram preservados para esta conta Windows.'
 } else {
-    Write-Host 'Aplicativo e dados locais removidos. Será necessário parear e cadastrar as digitais novamente.'
+    Write-Host 'Aplicativo e dados locais removidos. Será necessário parear de novo; as digitais que a Central já guarda voltam sozinhas depois do pareamento.'
 }
 Write-Host 'O driver e a DLL do fabricante não foram removidos.'

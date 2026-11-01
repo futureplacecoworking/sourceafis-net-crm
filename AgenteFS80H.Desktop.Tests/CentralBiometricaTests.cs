@@ -335,6 +335,9 @@ public class CentralBiometricaTests
             UnpairCalls++;
             return Task.FromResult(true);
         }
+        public Task<DigitalStateResponse> DigitalStateAsync(CancellationToken cancellationToken) => throw new AssertionException("A UI não sincroniza digitais.");
+        public Task StoreDigitalAsync(Guid enrollment, IReadOnlyList<string> readings, CancellationToken cancellationToken) => throw new AssertionException("A UI não envia digitais.");
+        public Task<DigitalDownload[]> DownloadDigitalsAsync(IReadOnlyCollection<Guid> enrollments, CancellationToken cancellationToken) => throw new AssertionException("A UI não baixa digitais.");
         public void Dispose() { }
     }
 }

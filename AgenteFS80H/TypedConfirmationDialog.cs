@@ -14,16 +14,16 @@ internal sealed record TypedConfirmation(string Title, string Message, string Wo
 
     public static TypedConfirmation ClearPairing(string deviceName) => new(
         "Limpar pareamento e digitais",
-        "Limpar o pareamento apaga todas as digitais guardadas neste computador e desliga " + DeviceLabel(deviceName) + " na Central. " +
-        "Este computador para de identificar as pessoas até ser pareado de novo, e todas as digitais terão de ser cadastradas outra vez.\n\n" +
+        "Limpar o pareamento apaga as digitais guardadas neste computador (a cópia protegida que ele usa para comparar rápido) e desliga " + DeviceLabel(deviceName) + " na Central. " +
+        "Este computador para de identificar as pessoas até ser pareado de novo. A Central guarda a cópia principal das digitais: o que ela já tem volta sozinho quando este leitor for pareado outra vez.\n\n" +
         $"Para confirmar, digite {ClearWord} abaixo.",
         ClearWord, "Limpar tudo");
 
     public static TypedConfirmation ReplacePairing(string deviceName) => new(
         "Trocar o pareamento",
         "Este computador já está ligado à Central" + (string.IsNullOrWhiteSpace(deviceName) ? "" : $" como «{deviceName}»") + ". " +
-        "Trocar o pareamento apaga as digitais guardadas neste computador e desliga o leitor antigo na Central. " +
-        "Depois, as pessoas precisam cadastrar a digital de novo no leitor novo.\n\n" +
+        "Trocar o pareamento apaga a cópia das digitais guardada neste computador e desliga o leitor antigo na Central. " +
+        "A Central guarda a cópia principal: as digitais que ela já tem voltam sozinhas para o leitor pareado; só quem ainda não tem digital na Central precisa cadastrar de novo.\n\n" +
         $"Para continuar, digite {ReplaceWord} abaixo.",
         ReplaceWord, "Trocar pareamento");
 
